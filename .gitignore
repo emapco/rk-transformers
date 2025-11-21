@@ -1,0 +1,35 @@
+# Python bytecode files
+*.pyc
+*.pyo
+*.pyd
+# Virtual environment directories
+venv/
+env/
+.venv/
+.env/
+# Ignore coverage reports
+.coverage
+.coverage.*
+# Ignore pytest cache
+.pytest_cache/
+# Ignore logs
+*.log
+# Ignore model files
+*.rknn
+*.onnx
+
+# Directories to ignore
+__pycache__/
+build/
+dist/
+.eggs/
+*.egg-info/
+.vscode/
+.ipynb_checkpoints/
+htmlcov/
+outputs/
+
+# Miscellaneous
+*.whl
+*.egg*
+precision_evaluation*

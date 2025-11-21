@@ -1,0 +1,106 @@
+[project]
+name = "rkruntime"
+version = "0.1.0"
+description = "Runtime utilities for deploying HF transformers with RKNN backends"
+license = { text = "Apache 2.0" }
+readme = "README.md"
+authors = [
+    { name = "Emmanuel Cortes", email = "manny@derifyai.com" },
+]
+maintainers = [
+    { name = "Emmanuel Cortes", email = "manny@derifyai.com" },
+]
+requires-python = ">=3.10"
+keywords = ["rknn", "npu", "transformers", "nlp", "embeddings", "edge-ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "onnx>=1.14.1,<=1.18.0",
+    "onnxruntime>=1.10.0",
+    "optimum[onnx]>=2.0.0,<3.0.0",
+    "torch>=2.0.0,<3.0.0",
+    "transformers[torch]>=4.55.4,<5.0.0",
+    "huggingface-hub>=0.36.0",
+]
+
+[project.urls]
+Repository = "https://github.com/emapco/rkruntime"
+Homepage = "https://github.com/emapco/rkruntime"
+Documentation = "https://github.com/emapco/rkruntime#readme"
+"Bug Tracker" = "https://github.com/emapco/rkruntime/issues"
+Changelog = "https://github.com/emapco/rkruntime/releases"
+
+[project.optional-dependencies]
+export = ["rknn-toolkit2==2.3.2", "datasets", "numpy==1.26.4"]
+inference = ["rknn-toolkit-lite2==2.3.2", "numpy>=1.26.4,<3.0.0", "sentence-transformers>=5.0.0,<6.0.0"]
+dev = ["pytest", "pytest-cov", "pytest-xdist", "pytest-env", "pre-commit", "build", "ruff", "ninja"]
+
+[project.scripts]
+rkruntime-cli = "rkruntime.commands.rkruntime_cli:main"
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu" },
+]
+torchvision = [
+  { index = "pytorch-cpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["./src"]
+include = ["rkruntime*"]
+
+[tool.ruff]
+exclude = [
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "build",
+    "dist",
+    "site-packages",
+    "venv",
+]
+line-length = 120
+indent-width = 4
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "W", "B", "SIM", "I"]
+ignore = []
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

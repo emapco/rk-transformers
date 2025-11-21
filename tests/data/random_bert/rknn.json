@@ -1,0 +1,8 @@
+{
+    "model.rknn": {
+        "max_seq_length": 32,
+        "batch_size": 1,
+        "target_platform": "rk3588",
+        "quantized_dtype": null
+    }
+}

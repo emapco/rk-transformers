@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions
+    url: https://github.com/amazon-science/chronos-forecasting/discussions/new
+    about: Use this to ask questions and start discussions

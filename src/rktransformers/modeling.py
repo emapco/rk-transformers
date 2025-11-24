@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import importlib.util
-import logging
+import json
 import os
 import re
 import shutil
@@ -39,6 +40,7 @@ from transformers.modeling_outputs import (
     MaskedLMOutput,
     SequenceClassifierOutput,
 )
+from transformers.utils import logging
 from transformers.utils.doc import (
     add_end_docstrings,
     add_start_docstrings,
@@ -47,6 +49,7 @@ from transformers.utils.doc import (
 from transformers.utils.generic import ModelOutput
 from transformers.utils.hub import cached_file, is_offline_mode
 
+from .configuration import RKNNConfig
 from .constants import (
     RKNN_FILE_PATTERN,
     RKNN_WEIGHTS_NAME,
@@ -55,7 +58,7 @@ from .constants import (
 )
 from .utils.env_utils import get_edge_host_platform
 
-logger = logging.getLogger(__name__)
+logger = logging.get_logger(__name__)
 
 if importlib.util.find_spec("rknnlite") is not None:
     from rknnlite.api import RKNNLite  # pyright: ignore[reportMissingImports]
@@ -70,7 +73,7 @@ else:
 
 _TOKENIZER_FOR_DOC = "AutoTokenizer"
 RKNN_MODEL_END_DOCSTRING = r"""
-    This model inherits from [`~rkruntime.modeling.RKRTModel`], check its documentation for the generic methods the
+    This model inherits from [`~rktransformers.modeling.RKRTModel`], check its documentation for the generic methods the
     library implements for all its model (such as downloading or saving).
 """
 FROM_PRETRAINED_START_DOCSTRING = r"""
@@ -127,8 +130,8 @@ TEXT_INPUTS_DOCSTRING = r"""
 
 class RKRTModel(
     ModelHubMixin,
-    library_name="rkruntime",
-    tags=["rknn"],
+    library_name="rk-transformers",
+    tags=["rknn", "rockchip", "npu"],
 ):
     """Base class for RKNN-backed text models integrated with the Hugging Face Hub."""
 
@@ -142,6 +145,7 @@ class RKRTModel(
         model_path: str | Path,
         platform: PlatformType | None = None,
         core_mask: CoreMaskType = "auto",
+        rknn_config: RKNNConfig | None = None,
     ) -> None:
         if config is None:
             raise ValueError("A Hugging Face config is required to build an RKRT model.")
@@ -151,10 +155,14 @@ class RKRTModel(
         self.model_filename = self.model_path.name
         self.platform = platform or get_edge_host_platform()
         self.core_mask = core_mask
+        self.rknn_config = rknn_config or RKNNConfig()
 
-        self.input_names = ["input_ids", "attention_mask"]
-        if getattr(config, "type_vocab_size", 1) > 1:
-            self.input_names.append("token_type_ids")
+        if self.rknn_config.model_input_names:
+            self.input_names = self.rknn_config.model_input_names
+        else:
+            self.input_names = ["input_ids", "attention_mask"]
+            if getattr(config, "type_vocab_size", 1) > 1:
+                self.input_names.append("token_type_ids")
 
         self.rknn = self._load_rknn_model()
 
@@ -226,7 +234,7 @@ class RKRTModel(
             self.platform,
             self.core_mask,
         )
-        if self.platform in {"rk3588", "rk3576", "filled_target_platform", "support_target_platform"}:
+        if self.platform in {"rk3588", "rk3576"}:
             core_mask_map = {
                 "auto": RKNNLite.NPU_CORE_AUTO,
                 "0": RKNNLite.NPU_CORE_0,
@@ -311,7 +319,7 @@ class RKRTModel(
         expected_outputs: Sequence[str],
     ) -> dict[str, torch.Tensor | np.ndarray]:
         ordered_inputs: list[np.ndarray] = []
-        for name in ("input_ids", "attention_mask", "token_type_ids"):
+        for name in self.input_names:
             tensor = model_inputs.get(name)
             if tensor is None:
                 continue
@@ -339,7 +347,7 @@ class RKRTModel(
 
     def _warn_on_unhandled_inputs(self, kwargs: dict[str, Any]) -> None:
         if kwargs:
-            logger.warning(
+            logger.warning_once(  # type: ignore - transformers logger util
                 "%s received unsupported arguments: %s",
                 self.__class__.__name__,
                 ", ".join(kwargs.keys()),
@@ -505,6 +513,7 @@ class RKRTModel(
         # rknn options
         platform: PlatformType | None = None,
         core_mask: CoreMaskType = "auto",
+        rknn_config: RKNNConfig | None = None,
         # hub options
         subfolder: str = "",
         revision: str | None = None,
@@ -523,6 +532,26 @@ class RKRTModel(
 
         if is_offline_mode() and not local_files_only:
             local_files_only = True
+
+        # Try to load rknn.json first to guide file selection
+        if not os.path.isfile(model_id):
+            # Try to download/load rknn.json
+            with contextlib.suppress(FileNotFoundError):
+                rknn_json_path = cls._cached_file(
+                    model_id,
+                    filename="rknn.json",
+                    subfolder=subfolder,
+                    local_files_only=local_files_only,
+                    force_download=force_download,
+                    cache_dir=cache_dir,
+                    revision=revision,
+                    token=token,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                )
+                # We just ensure it's cached here, we'll use it later
+                if os.path.exists(rknn_json_path):
+                    pass
 
         if os.path.isfile(model_id):
             model_path = Path(model_id)
@@ -583,6 +612,25 @@ class RKRTModel(
                 proxies=proxies,
             )
 
+        # Load rknn.json to get specific model configuration if available
+        model_rknn_config = None
+        with contextlib.suppress(Exception):
+            # Try to find rknn.json in the model directory or its parent
+            rknn_json_path = model_path.parent / "rknn.json"
+            if not rknn_json_path.exists():
+                rknn_json_path = model_path.parent.parent / "rknn.json"
+
+            if rknn_json_path.exists():
+                with open(rknn_json_path) as f:
+                    full_config = json.load(f)
+
+                # Match model filename to keys in rknn.json (e.g. "rknn/model.rknn")
+                filename = model_path.name
+                for key, conf in full_config.items():
+                    if key.endswith(filename):
+                        model_rknn_config = RKNNConfig.from_dict(conf)
+                        break
+
         resolved_config = cls._resolve_config(
             model_id,
             config,
@@ -601,6 +649,7 @@ class RKRTModel(
             model_path=model_path,
             platform=platform,
             core_mask=core_mask,
+            rknn_config=model_rknn_config,
             **model_kwargs,
         )
 
@@ -652,7 +701,7 @@ FEATURE_EXTRACTION_EXAMPLE = r"""
 
     ```python
     >>> from transformers import {processor_class}
-    >>> from rkruntime.modeling import {model_class}
+    >>> from rktransformers.modeling import {model_class}
     >>> import torch
 
     >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
@@ -679,7 +728,7 @@ class RKRTModelForFeatureExtraction(RKRTModel):
         + FEATURE_EXTRACTION_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
             model_class="RKRTModelForFeatureExtraction",
-            checkpoint="chem-mrl/rknn-text-encoder",
+            checkpoint="eacortes/all-MiniLM-L6-v2",
         )
     )
     def forward(
@@ -705,7 +754,7 @@ MASKED_LM_EXAMPLE = r"""
 
     ```python
     >>> from transformers import {processor_class}
-    >>> from rkruntime.modeling import {model_class}
+    >>> from rktransformers.modeling import {model_class}
     >>> import torch
 
     >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
@@ -732,7 +781,7 @@ class RKRTModelForMaskedLM(RKRTModel):
         + MASKED_LM_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
             model_class="RKRTModelForMaskedLM",
-            checkpoint="chem-mrl/rknn-text-mlm",
+            checkpoint="eacortes/bert-base-uncased",
         )
     )
     def forward(
@@ -758,7 +807,7 @@ SEQUENCE_CLASSIFICATION_EXAMPLE = r"""
 
     ```python
     >>> from transformers import {processor_class}
-    >>> from rkruntime.modeling import {model_class}
+    >>> from rktransformers.modeling import {model_class}
     >>> import torch
 
     >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
@@ -785,7 +834,7 @@ class RKRTModelForSequenceClassification(RKRTModel):
         + SEQUENCE_CLASSIFICATION_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
             model_class="RKRTModelForSequenceClassification",
-            checkpoint="chem-mrl/rknn-text-classifier",
+            checkpoint="eacortes/distilbert-base-uncased-finetuned-sst-2-english",
         )
     )
     def forward(

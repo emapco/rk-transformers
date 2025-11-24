@@ -12,16 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "0.1.0"
+from optimum.commands.base import BaseOptimumCLICommand, CommandInfo
 
 
-from .load import patch_sentence_transformer
-from .modeling import RKRTModel, RKRTModelForFeatureExtraction, RKRTModelForMaskedLM, RKRTModelForSequenceClassification
-
-__all__ = [
-    "patch_sentence_transformer",
-    "RKRTModel",
-    "RKRTModelForFeatureExtraction",
-    "RKRTModelForMaskedLM",
-    "RKRTModelForSequenceClassification",
-]
+class BaseRKNNCLICommand(BaseOptimumCLICommand):
+    COMMAND = CommandInfo(
+        name="export",
+        help="Export ONNX models to RKNN format.",
+    )

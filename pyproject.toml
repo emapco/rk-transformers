@@ -1,5 +1,5 @@
 [project]
-name = "rkruntime"
+name = "rk-transformers"
 version = "0.1.0"
 description = "Runtime utilities for deploying HF transformers with RKNN backends"
 license = { text = "Apache 2.0" }
@@ -34,11 +34,11 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/emapco/rkruntime"
-Homepage = "https://github.com/emapco/rkruntime"
-Documentation = "https://github.com/emapco/rkruntime#readme"
-"Bug Tracker" = "https://github.com/emapco/rkruntime/issues"
-Changelog = "https://github.com/emapco/rkruntime/releases"
+Repository = "https://github.com/emapco/rk-transformers"
+Homepage = "https://github.com/emapco/rk-transformers"
+Documentation = "https://github.com/emapco/rk-transformers#readme"
+"Bug Tracker" = "https://github.com/emapco/rk-transformers/issues"
+Changelog = "https://github.com/emapco/rk-transformers/releases"
 
 [project.optional-dependencies]
 export = ["rknn-toolkit2==2.3.2", "datasets", "numpy==1.26.4"]
@@ -46,7 +46,7 @@ inference = ["rknn-toolkit-lite2==2.3.2", "numpy>=1.26.4,<3.0.0", "sentence-tran
 dev = ["pytest", "pytest-cov", "pytest-xdist", "pytest-env", "pre-commit", "build", "ruff", "ninja"]
 
 [project.scripts]
-rkruntime-cli = "rkruntime.commands.rkruntime_cli:main"
+rk-transformers-cli = "rktransformers.commands.rktransformers_cli:main"
 
 [tool.uv.sources]
 torch = [
@@ -67,7 +67,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["./src"]
-include = ["rkruntime*"]
+include = ["rktransformers*"]
 
 [tool.ruff]
 exclude = [
@@ -89,6 +89,7 @@ exclude = [
     "dist",
     "site-packages",
     "venv",
+    "tests/data",
 ]
 line-length = 120
 indent-width = 4
@@ -104,3 +105,21 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+addopts = "-ra -n 4 --strict-markers --strict-config --tb=short -m 'not manual'"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "requires_rknn: marks tests that require RKNN hardware",
+    "manual: marks tests that should only run when explicitly invoked (deselect with '-m \"not manual\"')",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]

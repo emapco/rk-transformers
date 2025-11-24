@@ -24,7 +24,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv pip install --system .[dev,export]
+        run: |
+          uv venv
+          uv pip install .[dev,export]
 
       - name: Run tests with pytest
         run: uv run pytest tests -v

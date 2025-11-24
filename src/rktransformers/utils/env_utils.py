@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Utilities for environment detection"""
 
 import contextlib
@@ -20,7 +21,7 @@ import re
 import subprocess
 
 
-def get_librknnrt_version():
+def get_librknnrt_version() -> str:
     """Read librknnrt library version"""
     with contextlib.suppress(Exception):
         output = subprocess.check_output(
@@ -33,7 +34,7 @@ def get_librknnrt_version():
     return "Not Detected"
 
 
-def get_rknpu_driver_version():
+def get_rknpu_driver_version() -> str:
     """Read RKNPU2 driver version"""
     try:
         with open("/sys/kernel/debug/rknpu/version") as f:
@@ -60,7 +61,7 @@ def get_rockchip_board():
     return "Not Detected"
 
 
-def get_rknn_toolkit_version():
+def get_rknn_toolkit_version() -> str:
     """Read rknn-toolkit2 or rknn-toolkit-lite2 version
 
     Returns:

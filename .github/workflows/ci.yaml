@@ -27,7 +27,6 @@ jobs:
         run: |
           uv venv
           uv sync
-          uv pip install -e '.[dev,export]'
 
       - name: Run tests with pytest
         run: uv run pytest tests -v

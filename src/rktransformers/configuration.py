@@ -181,7 +181,7 @@ class RKNNConfig:
             Example: batch_size=1 creates inputs shaped [1, 128], batch_size=4 creates [4, 128].
         max_seq_length: Maximum sequence length for input shapes during ONNX export and RKNN conversion.
             Auto-detected: Read from model's config.json (max_position_embeddings).
-            Falls back to 256 if not found in config.
+            Falls back to 512 if not found in config.
             Note: large sequence length causes the RKNN export to segmentation fault.
 
         # RKNN-specific Parameters

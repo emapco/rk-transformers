@@ -188,7 +188,7 @@ class TestRKNNExporter:
         )
 
         export_rknn(config)
-        # Since max_seq_length=128 differs from DEFAULT_MAX_SEQ_LENGTH=256, filename includes params
+        # Since max_seq_length=128 differs from DEFAULT_MAX_SEQ_LENGTH=512, filename includes params
         expected_rknn_path = str(temp_dir / "hub-model" / "model_b1_s128.rknn")
         assert config.output_path == expected_rknn_path
 
@@ -322,7 +322,7 @@ class TestRKNNExporter:
             model_id_or_path="test/model.onnx",
             output_path=str(output_path),
             batch_size=DEFAULT_BATCH_SIZE,  # 1
-            max_seq_length=DEFAULT_MAX_SEQ_LENGTH,  # 256
+            max_seq_length=DEFAULT_MAX_SEQ_LENGTH,
         )
 
         export_rknn(config)
@@ -349,7 +349,7 @@ class TestRKNNExporter:
             model_id_or_path="test/model.onnx",
             output_path=str(output_path),
             batch_size=4,  # Non-default
-            max_seq_length=DEFAULT_MAX_SEQ_LENGTH,  # 256 (default)
+            max_seq_length=DEFAULT_MAX_SEQ_LENGTH,
         )
 
         export_rknn(config)

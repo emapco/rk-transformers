@@ -114,7 +114,7 @@ rk-transformers-cli export \
   --dataset sentence-transformers/natural-questions \
   --dataset-split test \
   --dataset-size 128 \
-  --max-seq-length 128 # default is 256
+  --max-seq-length 128 # Default is 512
 
 # Export a local ONNX model
 rk-transformers-cli export \
@@ -126,17 +126,17 @@ rk-transformers-cli export \
 ### 2. Run Inference with Sentence Transformers
 
 ```python
-from sentence_transformers import SentenceTransformer
 from rktransformers import patch_sentence_transformer
+from sentence_transformers import SentenceTransformer
 
 # Apply RKNN backend patch
 patch_sentence_transformer()
 
 # Load model with RKNN backend
 model = SentenceTransformer(
-    "./all-MiniLM-L6-v2",
+    "eacortes/all-MiniLM-L6-v2",
     backend="rknn",
-    model_kwargs={"platform": "rk3588", "core_mask": "all"}
+    model_kwargs={"platform": "rk3588", "core_mask": "all"},
 )
 
 # Generate embeddings
@@ -146,12 +146,9 @@ print(embeddings.shape)  # (2, 384)
 
 # Load specific quantized model file
 model = SentenceTransformer(
-    "./all-MiniLM-L6-v2",
+    "eacortes/all-MiniLM-L6-v2",
     backend="rknn",
-    model_kwargs={
-        "platform": "rk3588",
-        "file_name": "rknn/model_w8a8.rknn"
-    }
+    model_kwargs={"platform": "rk3588", "file_name": "rknn/model_w8a8.rknn"},
 )
 ```
 
@@ -162,11 +159,9 @@ from rktransformers import RKRTModelForFeatureExtraction
 from transformers import AutoTokenizer
 
 # Load tokenizer and model
-tokenizer = AutoTokenizer.from_pretrained("./all-MiniLM-L6-v2")
+tokenizer = AutoTokenizer.from_pretrained("eacortes/all-MiniLM-L6-v2")
 model = RKRTModelForFeatureExtraction.from_pretrained(
-    "./all-MiniLM-L6-v2",
-    platform="rk3588",
-    core_mask="auto"
+    "eacortes/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto"
 )
 
 # Tokenize and run inference
@@ -175,7 +170,7 @@ inputs = tokenizer(
     padding="max_length",
     max_length=128,
     truncation=True,
-    return_tensors="np"
+    return_tensors="np",
 )
 
 outputs = model(**inputs)
@@ -184,22 +179,24 @@ print(embeddings.shape)  # (1, 384)
 
 # Load specific quantized model file
 model = RKRTModelForFeatureExtraction.from_pretrained(
-    "./all-MiniLM-L6-v2",
-    platform="rk3588",
-    file_name="rknn/model_w8a8.rknn"
+    "eacortes/all-MiniLM-L6-v2", platform="rk3588", file_name="rknn/model_w8a8.rknn"
 )
 ```
 
 ### 4. Export Programmatically
 
 ```python
-from rktransformers import export_rknn, RKNNConfig, QuantizationConfig, OptimizationConfig
+from rktransformers import (
+    OptimizationConfig,
+    QuantizationConfig,
+    RKNNConfig,
+    export_rknn,
+)
 
-# Configure export
 config = RKNNConfig(
     model_id_or_path="sentence-transformers/all-MiniLM-L6-v2",
     output_path="./my-exported-model",
-    platform="rk3588",
+    target_platform="rk3588",
     batch_size=1,
     max_seq_length=128,
     quantization=QuantizationConfig(
@@ -207,13 +204,9 @@ config = RKNNConfig(
         dataset_name="wikitext",
         dataset_size=100,
     ),
-    optimization=OptimizationConfig(
-        optimization_level=3,
-        target_platform="rk3588"
-    )
+    optimization=OptimizationConfig(optimization_level=3),
 )
 
-# Run export
 export_rknn(config)
 ```
 
@@ -254,23 +247,19 @@ from rktransformers import RKRTModelForFeatureExtraction
 
 # Auto-select idle cores (recommended for production)
 model = RKRTModelForFeatureExtraction.from_pretrained(
-    "sentence-transformers/all-MiniLM-L6-v2",
-    platform="rk3588",
-    core_mask="auto"
+    "eacortes/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto"
 )
 
 # Use specific core for dedicated workloads
 model = RKRTModelForFeatureExtraction.from_pretrained(
     "my-model",
     platform="rk3588",
-    core_mask="1"  # Reserve core 0 for other tasks
+    core_mask="1",  # Reserve core 0 for other tasks
 )
 
 # Use all cores for maximum performance
 model = RKRTModelForFeatureExtraction.from_pretrained(
-    "large-model",
-    platform="rk3588",
-    core_mask="all"
+    "large-model", platform="rk3588", core_mask="all"
 )
 ```
 
@@ -282,18 +271,10 @@ from rktransformers import patch_sentence_transformer
 
 patch_sentence_transformer()
 
-# Auto core selection
 model = SentenceTransformer(
-    "sentence-transformers/all-MiniLM-L6-v2",
+    "eacortes/all-MiniLM-L6-v2",
     backend="rknn",
     model_kwargs={"platform": "rk3588", "core_mask": "auto"}
-)
-
-# Dual-core execution
-model = SentenceTransformer(
-    "sentence-transformers/all-MiniLM-L6-v2",
-    backend="rknn",
-    model_kwargs={"platform": "rk3588", "core_mask": "0_1"}
 )
 ```
 
@@ -323,7 +304,6 @@ While the tool supports various quantization data types, many are **experimental
 3. **Platform Validation**: Checks compatibility with `RKNNLite.list_support_target_platform()`
 4. **Runtime Init**: Loads model to NPU with specified core mask
 5. **Inference**: Runs forward pass with automatic input/output handling
-
 
 ### Cross-Component Communication
 
@@ -462,8 +442,6 @@ Copy-and-paste the text below in your GitHub issue:
 ## 📄 License
 
 This project is licensed under the **Apache License 2.0**.
-
-See [LICENSE](LICENSE) for full text.
 
 ## 🙏 Acknowledgments
 

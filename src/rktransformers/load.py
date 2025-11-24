@@ -82,8 +82,9 @@ def patch_sentence_transformer():
     3. Patch Transformer.tokenize to ensure padding="max_length" for RKNN models.
     """
     if not is_sentence_transformers_available():
-        logger.warning("SentenceTransformers is not available. Skipping RKNN patch.")
-        return
+        raise ImportError(
+            "sentence-transformers is not available. Please install it via pip: pip install sentence-transformers"
+        )
 
     from sentence_transformers.models import Transformer
 

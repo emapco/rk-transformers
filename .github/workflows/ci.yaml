@@ -23,4 +23,4 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Test with python ${{ matrix.python-version }}
-        run: uv run --frozen --extra dev --extra export pytest
+        run: uv run --extra dev --extra export pytest

@@ -58,7 +58,7 @@ model = RKRTModelForFeatureExtraction.from_pretrained(
 inputs = tokenizer(
     ["Sample text for encoding"],
     padding="max_length",
-    max_length=64,
+    max_length=32,
     truncation=True,
     return_tensors="np"
 )

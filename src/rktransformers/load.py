@@ -58,7 +58,7 @@ def load_rknn_model(model_name_or_path: str, config: PretrainedConfig, task_name
 
         model_cls = task_to_model_mapping[task_name]
     except ImportError as e:
-        raise Exception("Using the RKNN backend requires installing the rktransformers package.") from e
+        raise Exception("Using the RKNN backend requires installing the sentence-transformers package.") from e
 
     model = model_cls.from_pretrained(
         model_name_or_path,

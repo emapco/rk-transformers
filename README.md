@@ -73,7 +73,8 @@ uv pip install rk-transformers[export]
 This installs export dependencies including:
 
 - `rknn-toolkit2` (2.3.2)
-- `optimum[onnx]`, `datasets`
+- `sentence-transformers` (5.x)
+- `numpy`, `torch`, `transformers`, `optimum[onnx]`, `datasets`
 - All inference dependencies (except `rknn-toolkit-lite2`)
 
 #### For Development
@@ -297,7 +298,7 @@ While the tool supports various quantization data types, many are **experimental
 
 ## Architecture
 
-#### Runtime Loading Workflow
+### Runtime Loading Workflow
 
 1. **Model Discovery**: `RKRTModel.from_pretrained()` searches for `.rknn` files
 2. **Config Matching**: Reads `rknn.json` to match platform and constraints

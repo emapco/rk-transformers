@@ -12,61 +12,101 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
+"""Tests for RKNN patches to SentenceTransformers."""
+
+from pathlib import Path
 
 import pytest
 from sentence_transformers import SentenceTransformer
 
-from rkruntime.load import patch_sentence_transformer
-from rkruntime.utils.env_utils import is_rockchip_platform
+from rktransformers.load import patch_sentence_transformer
+from rktransformers.utils.env_utils import is_rockchip_platform
 
-if not is_rockchip_platform():
-    pytest.skip("Skipping RKNN tests on non-Rockchip platform", allow_module_level=True)
+# Skip all tests in this module if not on Rockchip platform
+pytestmark = pytest.mark.skipif(
+    not is_rockchip_platform(),
+    reason="Skipping RKNN tests on non-Rockchip platform",
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
-def setup_module():
-    # Apply the patch
+def setup_module() -> None:
+    """Apply the SentenceTransformer patch before running tests."""
     patch_sentence_transformer()
 
 
 @pytest.fixture
-def model_path():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_dir, "data/random_bert")
+def model_path(test_data_dir: Path) -> Path:
+    """Return path to the test BERT model."""
+    return test_data_dir / "random_bert"
 
 
-def test_load_rknn_model(model_path):
-    """Test loading the model with backend='rknn'"""
-    try:
+@pytest.mark.requires_rknn
+class TestRKNNPatch:
+    """Tests for RKNN backend integration with SentenceTransformers."""
+
+    def test_load_rknn_model(self, model_path: Path) -> None:
+        """Test loading model with backend='rknn'."""
         model = SentenceTransformer(
-            model_path,
+            str(model_path),
             similarity_fn_name="cosine",
             trust_remote_code=True,
             backend="rknn",  # type: ignore
         )
-    except Exception as e:
-        pytest.fail(f"Failed to load RKNN model: {e}")
 
-    assert model.backend == "rknn"
-    # Check if the underlying auto_model is an RKRTModel
-    assert "RKRTModel" in model[0].auto_model.__class__.__name__
-    # Check if max_seq_length was updated from rknn.json
-    assert model.max_seq_length == 32
+        assert model.backend == "rknn"
+        # Check if the underlying auto_model is an RKRTModel
+        assert "RKRTModel" in model[0].auto_model.__class__.__name__
+        # Check if max_seq_length was updated from rknn.json
+        assert model.max_seq_length == 32
 
+    def test_inference(self, model_path: Path) -> None:
+        """Test inference with the RKNN-loaded model."""
+        model = SentenceTransformer(
+            str(model_path),
+            similarity_fn_name="cosine",
+            trust_remote_code=True,
+            backend="rknn",  # type: ignore
+        )
+        sentences = ["CCO", "CCN"]
+        embeddings = model.encode(sentences, batch_size=1)
 
-def test_inference(model_path):
-    """Test inference with the loaded model"""
-    model = SentenceTransformer(
-        model_path,
-        similarity_fn_name="cosine",
-        trust_remote_code=True,
-        backend="rknn",  # type: ignore
+        assert embeddings.shape[0] == 2
+        assert embeddings.shape[1] > 0
+
+    @pytest.mark.parametrize(
+        "sentences,batch_size",
+        [
+            (["hello"], 1),
+            (["hello", "world"], 1),
+            (["hello", "world"], 2),
+            (["a", "b", "c", "d"], 2),
+        ],
     )
-    sentences = ["CCO", "CCN"]
-    embeddings = model.encode(sentences, batch_size=1)
+    def test_inference_with_different_inputs(self, model_path: Path, sentences: list[str], batch_size: int) -> None:
+        """Test inference with different input sizes and batch sizes."""
+        model = SentenceTransformer(
+            str(model_path),
+            similarity_fn_name="cosine",
+            trust_remote_code=True,
+            backend="rknn",  # type: ignore
+        )
+        embeddings = model.encode(sentences, batch_size=batch_size)
 
-    assert embeddings.shape[0] == 2
-    # The dimension depends on the model, usually 384 or similar.
-    # We can just check it's not empty.
-    assert embeddings.shape[1] > 0
+        assert embeddings.shape[0] == len(sentences)
+        assert embeddings.shape[1] > 0
+
+    def test_model_attributes(self, model_path: Path) -> None:
+        """Test that model has expected attributes after loading."""
+        model = SentenceTransformer(
+            str(model_path),
+            similarity_fn_name="cosine",
+            trust_remote_code=True,
+            backend="rknn",  # type: ignore
+        )
+
+        assert hasattr(model, "backend")
+        assert hasattr(model, "max_seq_length")
+        assert model.backend == "rknn"
+        assert isinstance(model.max_seq_length, int)
+        assert model.max_seq_length > 0

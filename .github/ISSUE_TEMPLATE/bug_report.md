@@ -10,7 +10,7 @@ assignees: ''
 **Bug report checklist**
 <!-- Please ensure at least one of the following to help the developers troubleshoot the problem:  -->
 - [ ] I provided code that demonstrates a minimal reproducible example. <!-- Ideal, especially via source install -->
-- [ ] I confirmed bug exists on the latest mainline of `rkruntime` via source install. <!-- Preferred -->
+- [ ] I confirmed bug exists on the latest mainline of `rk-transformers` via source install. <!-- Preferred -->
 
 **Describe the bug**
 <!-- A clear and concise description of what the bug is. -->
@@ -24,7 +24,7 @@ If the code is too long, feel free to put it in a public gist and link it in the
 In short, we are going to copy-paste your code to run it and we expect to get the same result as you. -->
 
 **Environment description**
-<!-- Run `rkruntime-cli env` and copy-paste the output here -->
+<!-- Run `rk-transformers-cli env` and copy-paste the output here -->
 <!--
 - Operating system: 
 - Rockchip Board: 

@@ -2,6 +2,9 @@ name: Lint Codebase
 
 on:
   push:
+    branches:
+      - main
+      - "releases/**"
   pull_request:
   workflow_dispatch:
 
@@ -16,8 +19,3 @@ jobs:
         uses: astral-sh/ruff-action@v3
         with:
           args: check --output-format=github .
-
-      - name: Ruff format check
-        uses: astral-sh/ruff-action@v3
-        with:
-          args: format --check --diff .

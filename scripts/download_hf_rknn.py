@@ -14,15 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utility script to load RKNN2 models with rkruntime.RKRTModel."""
+"""Utility script to load RKNN2 models with rktransformers.RKRTModel."""
 
 import argparse
 import logging
 from pathlib import Path
 from typing import Any
 
-from rkruntime.constants import PLATFORM_CHOICES
-from rkruntime.modeling import RKRTModel
+from huggingface_hub.constants import HF_HUB_CACHE
+
+from rktransformers.constants import PLATFORM_CHOICES
+from rktransformers.modeling import RKRTModel
 
 LOGGER = logging.getLogger("load_hf_rknn")
 
@@ -50,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cache-dir",
         type=Path,
-        default=None,
+        default=HF_HUB_CACHE,
         help="Optional cache directory for downloaded artifacts.",
     )
     parser.add_argument(

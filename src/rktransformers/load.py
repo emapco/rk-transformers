@@ -15,7 +15,7 @@
 import json
 import logging
 import os
-from typing import Any, cast
+from typing import Any
 
 from transformers.configuration_utils import PretrainedConfig
 
@@ -26,18 +26,19 @@ logger = logging.getLogger(__name__)
 
 def load_rknn_model(model_name_or_path: str, config: PretrainedConfig, task_name: str, **model_kwargs):
     """
-    Load an RKNN model using the rkruntime library.
+    Load an RKNN model using the rktransformers library.
 
     Args:
         model_name_or_path (str): The model name on Hugging Face or the path to a local model directory.
         config (PretrainedConfig): The model configuration.
         task_name (str): The task name for the model (e.g. 'feature-extraction', 'fill-mask').
         model_kwargs (dict): Additional keyword arguments for the model loading.
+            - file_name (str, optional): Specific RKNN file to load (e.g. "model_quantized.rknn").
     """
     try:
         from sentence_transformers.backend.utils import _save_pretrained_wrapper
 
-        from rkruntime.modeling import (
+        from rktransformers.modeling import (
             RKRTModelForFeatureExtraction,
             RKRTModelForMaskedLM,
             RKRTModelForSequenceClassification,
@@ -57,9 +58,8 @@ def load_rknn_model(model_name_or_path: str, config: PretrainedConfig, task_name
 
         model_cls = task_to_model_mapping[task_name]
     except ImportError as e:
-        raise Exception("Using the RKNN backend requires installing the rkruntime package.") from e
+        raise Exception("Using the RKNN backend requires installing the sentence-transformers package.") from e
 
-    # Load the model
     model = model_cls.from_pretrained(
         model_name_or_path,
         config=config,
@@ -82,8 +82,9 @@ def patch_sentence_transformer():
     3. Patch Transformer.tokenize to ensure padding="max_length" for RKNN models.
     """
     if not is_sentence_transformers_available():
-        logger.warning("SentenceTransformers is not available. Skipping RKNN patch.")
-        return
+        raise ImportError(
+            "sentence-transformers is not available. Please install it via pip: pip install sentence-transformers"
+        )
 
     from sentence_transformers.models import Transformer
 
@@ -94,34 +95,46 @@ def patch_sentence_transformer():
         if backend == "rknn":
             # Check for rknn.json to get runtime parameters
             rknn_config_path = os.path.join(model_name_or_path, "rknn.json")
+            rknn_config = {}
 
             if os.path.exists(rknn_config_path):
-                with open(rknn_config_path) as f:
-                    rknn_config = json.load(f)
-                    self._rknn_config = rknn_config
+                try:
+                    with open(rknn_config_path) as f:
+                        rknn_config = json.load(f)
+                except Exception as e:
+                    logger.warning(f"Failed to load rknn.json: {e}")
 
-                    # Determine which model file to use
-                    file_name = model_kwargs.get("file_name")
-                    if file_name is None:
-                        if "model.rknn" in rknn_config:
-                            file_name = "model.rknn"
-                        elif "model.onnx" in rknn_config:
-                            file_name = "model.onnx"
+            self._rknn_config = rknn_config
 
-                    if file_name and file_name in rknn_config:
-                        model_config = rknn_config[file_name]
-                        # Update config with max_seq_length if present
-                        if "max_seq_length" in model_config:
-                            config.max_position_embeddings = model_config.pop("max_seq_length")
+            # Determine which model file to use
+            file_name = model_kwargs.get("file_name")
+            if file_name is None:
+                # Preference: model.rknn (unoptimized) -> first available in rknn/
+                if "model.rknn" in rknn_config:
+                    file_name = "model.rknn"
+                elif rknn_config:
+                    file_name = next(iter(rknn_config))  # First key in rknn_config
+                else:
+                    # Fallback checks
+                    if os.path.exists(os.path.join(model_name_or_path, "model.rknn")):
+                        file_name = "model.rknn"
+                    elif os.path.exists(os.path.join(model_name_or_path, "rknn")):
+                        # Check inside rknn/ dir
+                        rknn_dir = os.path.join(model_name_or_path, "rknn")
+                        files = [f for f in os.listdir(rknn_dir) if f.endswith(".rknn")]
+                        if files:
+                            file_name = f"rknn/{files[0]}"
 
-                        # Pass remaining config to model_kwargs
-                        model_kwargs.update(model_config)
+            if file_name:
+                if file_name in rknn_config:
+                    rknn_config = rknn_config[file_name]
+                if "max_seq_length" in rknn_config:
+                    config.max_position_embeddings = rknn_config["max_seq_length"]
+                if "file_name" not in model_kwargs:
+                    model_kwargs["file_name"] = file_name
 
-                        # Ensure file_name is passed if we found it
-                        if "file_name" not in model_kwargs:
-                            model_kwargs["file_name"] = file_name
-
-            # Load the RKNN model
+            # Store selected config for later use (e.g. in tokenizer)
+            self._rknn_config = rknn_config
             self.auto_model = load_rknn_model(
                 model_name_or_path,
                 config=config,
@@ -164,9 +177,9 @@ def patch_sentence_transformer():
         if not hasattr(self, "_rknn_config"):
             return
 
-        # Apply RKNN max_seq_length override after tokenizer is loaded and other initializations
-        self.max_seq_length = self.auto_model.config.max_position_embeddings
-        # Configure tokenizer to pad to max_length for static RKNN models
+        # Apply max_seq_length from rknn.json if available
+        if self.auto_model and hasattr(self.auto_model, "config"):
+            self.max_seq_length = self.auto_model.config.max_position_embeddings
         if hasattr(self, "tokenizer") and self.tokenizer is not None:
             self.tokenizer.padding = "max_length"
             self.tokenizer.pad_to_max_length = True
@@ -184,45 +197,7 @@ def patch_sentence_transformer():
             return original_tokenize(self, texts, padding)
 
         # For RKNN backend, always use max_length padding and return numpy arrays
-        padding = "max_length"
-        # Call original but override return_tensors
-        output = {}
-        if isinstance(texts[0], str):
-            to_tokenize = [texts]
-        elif isinstance(texts[0], dict):
-            texts = cast(list[dict], texts)
-            to_tokenize = []
-            output["text_keys"] = []
-            for lookup in texts:
-                text_key, text = next(iter(lookup.items()))
-                to_tokenize.append(text)
-                output["text_keys"].append(text_key)
-            to_tokenize = [to_tokenize]
-        else:
-            texts = cast(list[tuple[str, str]], texts)
-            batch1, batch2 = [], []
-            for text_tuple in texts:
-                batch1.append(text_tuple[0])
-                batch2.append(text_tuple[1])
-            to_tokenize = [batch1, batch2]
-
-        # strip
-        to_tokenize = [[str(s).strip() for s in col] for col in to_tokenize]
-
-        # Lowercase
-        if self.do_lower_case:
-            to_tokenize = [[s.lower() for s in col] for col in to_tokenize]
-
-        output.update(
-            self.tokenizer(
-                *to_tokenize,
-                padding=padding,
-                truncation="longest_first",
-                return_tensors="pt",  # Return torch tensors for compatibility with Pooling
-                max_length=self.max_seq_length,
-            )
-        )
-        return output
+        return original_tokenize(self, texts, padding="max_length")
 
     Transformer.tokenize = tokenize_patched
 

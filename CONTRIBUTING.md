@@ -26,13 +26,14 @@ Contributions via pull requests are much appreciated. Before sending us a pull r
 To send us a pull request, please:
 
 1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/your-feature`).
+2. Create a feature branch (`git checkout -b feat-your-feature`).
 3. Modify the code as needed; please focus on a single issue or feature per pull request. If you also reformat all the code, it will be hard for us to focus on your change.
 4. Ensure local tests pass; preferably on Rockchip hardware. Add new tests for your changes where applicable.
-5. Commit your changes (`git commit -m 'Add some feature'`) using clear commit messages.
-6. Push to your branch (`git push origin feature/your-feature`).
-7. Open a Pull Request, answering any default questions in the pull request interface.
-8. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
+5. Run `pre-commit run --all-files` to ensure code quality.
+6. Commit your changes (`git commit -m 'Add some feature'`) using clear commit messages.
+7. Push to your branch (`git push origin feat-your-feature`).
+8. Open a Pull Request, answering any default questions in the pull request interface.
+9. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
 
 GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
 [creating a pull request](https://help.github.com/articles/creating-a-pull-request/).

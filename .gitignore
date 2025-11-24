@@ -33,3 +33,7 @@ outputs/
 *.whl
 *.egg*
 precision_evaluation*
+
+# Test files
+!tests/data/random_bert/model.onnx
+!tests/data/random_roberta/model.onnx

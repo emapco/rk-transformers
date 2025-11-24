@@ -164,7 +164,6 @@ class TestRKNNExporter:
 
         initial_output_path = temp_dir / "model.rknn"
         expected_output_dir = str(temp_dir / "hub-model")
-        expected_rknn_path = str(temp_dir / "hub-model" / "model.rknn")
 
         # Mock file existence checks
         # 1. check if model_id_or_path exists (False for Hub ID)

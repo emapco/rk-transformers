@@ -1,7 +1,7 @@
 [project]
 name = "rk-transformers"
 version = "0.1.0"
-description = "Runtime utilities for deploying HF transformers with RKNN backends"
+description = "Accelerate Hugging Face Transformers on Rockchip NPUs."
 license = { text = "Apache 2.0" }
 readme = "README.md"
 authors = [
@@ -27,6 +27,7 @@ classifiers = [
 dependencies = [
     "onnx>=1.14.1,<=1.18.0",
     "onnxruntime>=1.10.0",
+    "optimum-onnx>=0.0.3",
     "optimum[onnx]>=2.0.0,<3.0.0",
     "torch>=2.0.0,<3.0.0",
     "transformers[torch]>=4.55.4,<5.0.0",

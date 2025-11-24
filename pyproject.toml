@@ -51,7 +51,7 @@ rk-transformers-cli = "rktransformers.commands.rktransformers_cli:main"
 
 [tool.uv]
 override-dependencies = [
-    "torch>=2.4.0",
+    "pytorch-cpu>=2.4.0",
 ]
 
 [tool.uv.sources]

@@ -23,8 +23,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
-        run: uv pip install -e .[dev,export]
-
       - name: Test with python ${{ matrix.python-version }}
-        run: uv pip -m pytest
+        run: |
+          uv venv
+          uv pip install -e .[dev,export]
+          uv pip -m pytest

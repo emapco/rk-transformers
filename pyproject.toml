@@ -108,6 +108,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.pytest.ini_options]
+pythonpath = src
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]

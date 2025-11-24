@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv venv
-          uv install
+          uv run --frozen
           uv pip install -e '.[dev,export]'
 
       - name: Run tests with pytest

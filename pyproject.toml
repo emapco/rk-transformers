@@ -25,10 +25,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "onnx>=1.16.1,<2.0.0",
+    "onnx>=1.14.1,<=1.18.0",
     "onnxruntime>=1.10.0,<2.0.0",
-    "optimum[onnx]>=2.0.0,<3.0.0",
-    "torch>=2.0.0,<3.0.0",
+    "optimum[onnx]>=2.4.0,<3.0.0",
+    "torch>=2.4.0,<3.0.0",
     "transformers[torch]>=4.55.4,<5.0.0",
     "huggingface-hub>=0.36.0",
     "sentence-transformers>=5.0.0,<6.0.0",
@@ -48,11 +48,6 @@ dev = ["pytest", "pytest-cov", "pytest-xdist", "pytest-env", "pre-commit", "buil
 
 [project.scripts]
 rk-transformers-cli = "rktransformers.commands.rktransformers_cli:main"
-
-[tool.uv]
-override-dependencies = [
-    "pytorch-cpu>=2.4.0",
-]
 
 [tool.uv.sources]
 torch = [

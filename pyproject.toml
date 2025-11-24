@@ -49,6 +49,11 @@ dev = ["pytest", "pytest-cov", "pytest-xdist", "pytest-env", "pre-commit", "buil
 [project.scripts]
 rk-transformers-cli = "rktransformers.commands.rktransformers_cli:main"
 
+[tool.uv]
+override-dependencies = [
+    "torch>=2.4.0",
+]
+
 [tool.uv.sources]
 torch = [
   { index = "pytorch-cpu" },

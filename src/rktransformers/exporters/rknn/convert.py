@@ -19,7 +19,7 @@ import shutil
 from typing import cast
 
 from huggingface_hub import HfApi, create_repo, snapshot_download
-from optimum.exporters.onnx.__main__ import main_export
+from optimum.exporters.onnx import main_export
 from rknn.api import RKNN
 
 from rktransformers.configuration import RKNNConfig

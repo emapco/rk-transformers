@@ -17,18 +17,16 @@
 from pathlib import Path
 
 import pytest
+from sentence_transformers import SentenceTransformer
 
 from rktransformers.load import patch_sentence_transformer
 from rktransformers.utils.env_utils import is_rockchip_platform
-from rktransformers.utils.import_utils import is_sentence_transformers_available
 
 # Skip all tests in this module if not on Rockchip platform
 pytestmark = pytest.mark.skipif(
-    not is_rockchip_platform() and not is_sentence_transformers_available(),
+    not is_rockchip_platform(),
     reason="Skipping RKNN tests on non-Rockchip platform",
 )
-
-from sentence_transformers import SentenceTransformer  # noqa: E402
 
 
 @pytest.fixture(scope="module", autouse=True)

@@ -27,4 +27,4 @@ jobs:
         run: |
           uv venv
           uv pip install -e .[dev,export]
-          uv pip -m pytest
+          uv run pytest

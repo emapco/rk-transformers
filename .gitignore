@@ -28,6 +28,7 @@ dist/
 .ipynb_checkpoints/
 htmlcov/
 outputs/
+models/
 
 # Miscellaneous
 *.whl
@@ -36,4 +37,5 @@ precision_evaluation*
 
 # Test files
 !tests/data/random_bert/model.onnx
+!tests/data/random_bert/rknn/model_b1_s32_o3.rknn
 !tests/data/random_roberta/model.onnx

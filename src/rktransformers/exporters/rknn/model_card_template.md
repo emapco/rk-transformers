@@ -11,6 +11,7 @@
 - **Original Model:** [{{ base_model }}]({{ base_model_url }})
 - **Target Platform:** {{ target_platform }}
 - **rknn-toolkit2 Version:** {{ rknn_version }}
+- **rk-transformers Version:** {{ rk_transformers_version }}
 
 ### Available Model Files
 

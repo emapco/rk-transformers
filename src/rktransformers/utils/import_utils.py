@@ -36,3 +36,17 @@ def is_sentence_transformers_available() -> bool:
     Returns True if the SentenceTransformers library is available.
     """
     return check_package_availability("sentence-transformers", "huggingface")
+
+
+def is_rknn_toolkit_lite_available() -> bool:
+    """
+    Returns True if the RKNN Toolkit Lite library is available.
+    """
+    return check_package_availability("rknn-toolkit-lite2", "airockchip")
+
+
+def is_rknn_toolkit_available() -> bool:
+    """
+    Returns True if the RKNN Toolkit library is available.
+    """
+    return check_package_availability("rknn-toolkit2", "airockchip")

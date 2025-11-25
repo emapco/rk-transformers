@@ -25,10 +25,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "onnx>=1.14.1,<=1.18.0",
-    "onnxruntime>=1.10.0,<2.0.0",
+    "onnx>=1.16.1,<=1.18.0",
+    "onnxruntime>=1.23.2,<2.0.0",
     "optimum[onnx]>=2.0.0,<3.0.0",
-    "torch>=2.4.0,<3.0.0",
+    "torch>=2.2.0,<3.0.0",
     "transformers[torch]>=4.55.4,<5.0.0",
     "huggingface-hub>=0.36.0",
     "sentence-transformers>=5.0.0,<6.0.0",
@@ -118,7 +118,8 @@ addopts = "-ra -n 4 --strict-markers --strict-config --tb=short -m 'not manual'"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
-    "requires_rknn: marks tests that require RKNN hardware",
+    "requires_rknpu: marks tests that require RKNPU hardware",
+    "requires_export_extra: marks tests that require rknn-toolkit2",
     "manual: marks tests that should only run when explicitly invoked (deselect with '-m \"not manual\"')",
 ]
 filterwarnings = [

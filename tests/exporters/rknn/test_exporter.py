@@ -32,7 +32,16 @@ from rktransformers.constants import (
     OptimizationLevelType,
     PlatformType,
 )
-from rktransformers.exporters.rknn.convert import (
+from rktransformers.utils.import_utils import (
+    is_rknn_toolkit_available,
+)
+
+pytestmark = pytest.mark.skipif(
+    not is_rknn_toolkit_available(),
+    reason="Skipping tests that require the `export` extra but it's not installed.",
+)
+
+from rktransformers.exporters.rknn.convert import (  # noqa: E402
     export_rknn,
     prepare_dataset_for_quantization,
 )

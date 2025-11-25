@@ -15,51 +15,12 @@
 """Shared pytest fixtures for rktransformers tests."""
 
 import shutil
-import sys
 import tempfile
-from collections import OrderedDict
 from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 from transformers import PretrainedConfig
-
-
-# Mock rknnlite module before any imports
-@pytest.fixture(scope="session", autouse=True)
-def mock_rknnlite() -> None:
-    """Mock the rknnlite module for testing environments without RKNN hardware."""
-    if "rknnlite" not in sys.modules:
-        sys.modules["rknnlite"] = MagicMock()
-        sys.modules["rknnlite"].__spec__ = MagicMock()
-        sys.modules["rknnlite.api"] = MagicMock()
-        sys.modules["rknnlite.api"].__spec__ = MagicMock()
-
-    # Mock RKNNLite class with realistic behavior
-    class MockRKNNLite:
-        NPU_CORE_AUTO = 0
-        NPU_CORE_0 = 1
-        NPU_CORE_1 = 2
-        NPU_CORE_2 = 4
-        NPU_CORE_0_1 = 3
-        NPU_CORE_0_1_2 = 7
-        NPU_CORE_ALL = 0xFFFF
-
-        def __init__(self, verbose: bool = False):
-            self.verbose = verbose
-
-        def load_rknn(self, path: str) -> int:
-            return 0
-
-        def init_runtime(self, core_mask: int | None = None) -> int:
-            return 0
-
-        def list_support_target_platform(self, model_path: str) -> OrderedDict:
-            """Default behavior: return a dict of platforms."""
-            return OrderedDict([("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])])
-
-    sys.modules["rknnlite.api"].RKNNLite = MockRKNNLite
 
 
 @pytest.fixture
@@ -94,38 +55,12 @@ def test_data_dir() -> Path:
 
 
 @pytest.fixture
-def random_bert_model_path(test_data_dir: Path) -> Path:
-    """Return path to the random BERT test model."""
-    return test_data_dir / "random_bert"
-
-
-@pytest.fixture
 def pretrained_config() -> PretrainedConfig:
     """Create a basic pretrained config for testing."""
     return PretrainedConfig(model_type="rknn_model")
 
 
 @pytest.fixture
-def mock_rknn() -> Generator[MagicMock, None, None]:
-    """Create a mock RKNN instance for testing."""
-    mock = MagicMock()
-    mock.load_onnx.return_value = 0
-    mock.build.return_value = 0
-    mock.export_rknn.return_value = 0
-    mock.init_runtime.return_value = 0
-    mock.list_support_target_platform.return_value = OrderedDict(
-        [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
-    )
-    yield mock
-
-
-@pytest.fixture
-def mock_rknnlite_instance() -> Generator[MagicMock, None, None]:
-    """Create a mock RKNNLite instance for testing."""
-    mock = MagicMock()
-    mock.load_rknn.return_value = 0
-    mock.init_runtime.return_value = 0
-    mock.list_support_target_platform.return_value = OrderedDict(
-        [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
-    )
-    yield mock
+def random_bert_model_path(test_data_dir: Path) -> Path:
+    """Return path to the random BERT test model."""
+    return test_data_dir / "random_bert"

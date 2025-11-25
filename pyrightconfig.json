@@ -1,0 +1,10 @@
+{
+  "ignore": [
+    ".git",
+    "__pycache__",
+    ".pytest_cache__",
+    ".venv",
+    "outputs",
+    "models"
+  ]
+}

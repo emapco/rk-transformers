@@ -21,6 +21,13 @@ import re
 import subprocess
 
 
+def get_rktransformers_version() -> str:
+    """Get the installed rk-transformers version."""
+    from rktransformers import __version__
+
+    return __version__
+
+
 def get_librknnrt_version() -> str:
     """Read librknnrt library version"""
     with contextlib.suppress(Exception):

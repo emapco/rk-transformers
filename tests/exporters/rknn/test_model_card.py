@@ -19,7 +19,16 @@ from pathlib import Path
 import pytest
 
 from rktransformers.configuration import OptimizationConfig, QuantizationConfig, RKNNConfig
-from rktransformers.exporters.rknn.model_card import ModelCardGenerator
+from rktransformers.utils.import_utils import (
+    is_rknn_toolkit_available,
+)
+
+pytestmark = pytest.mark.skipif(
+    not is_rknn_toolkit_available(),
+    reason="Skipping tests that require the `export` extra but it's not installed.",
+)
+
+from rktransformers.exporters.rknn.model_card import ModelCardGenerator  # noqa: E402
 
 
 class TestModelCardGenerator:

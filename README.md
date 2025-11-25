@@ -34,11 +34,6 @@
 - **Transformers API**: Compatible with standard Hugging Face pipelines
 - **Multiple Tasks**: Feature extraction, masked LM, sequence classification
 
-### 🛠️ Developer Experience
-
-- **CLI Tools**: Powerful `rk-transformers-cli` for model export and environment diagnostics
-- **CI/CD**: Automated testing across Python 3.10, 3.11, and 3.12
-
 ## 📦 Installation
 
 ### Prerequisites
@@ -52,9 +47,10 @@
 
 `uv` is recommended for faster installation and smaller environment footprint.
 
-#### For Inference (on Rockchip devices)
+#### For Inference (on Rockchip devices [arm64])
 
 ```bash
+uv venv
 uv pip install rk-transformers[inference]
 ```
 
@@ -64,10 +60,12 @@ This installs runtime dependencies including:
 - `sentence-transformers` (5.x)
 - `numpy`, `torch`, `transformers`
 
-#### For Model Export (on development machines)
+#### For Model Export (on development machines [x86_64, arm64])
 
 ```bash
+uv venv
 uv pip install rk-transformers[export]
+uv pip install torch==2.4.0  # workaround for rknn-toolkit2 dependency
 ```
 
 This installs export dependencies including:
@@ -77,7 +75,7 @@ This installs export dependencies including:
 - `numpy`, `torch`, `transformers`, `optimum[onnx]`, `datasets`
 - All inference dependencies (except `rknn-toolkit-lite2`)
 
-#### For Development
+#### For Development (on development machines [x86_64, arm64])
 
 ```bash
 # Clone the repository
@@ -85,7 +83,9 @@ git clone https://github.com/emapco/rk-transformers.git
 cd rk-transformers
 
 # Install with development tools
+uv venv
 uv pip install -e .[dev,export]
+uv pip install torch==2.4.0  # workaround for rknn-toolkit2 dependency
 ```
 
 Development dependencies include:
@@ -127,8 +127,9 @@ rk-transformers-cli export \
 ### 2. Run Inference with Sentence Transformers
 
 ```python
-from rktransformers import patch_sentence_transformer
 from sentence_transformers import SentenceTransformer
+
+from rktransformers import patch_sentence_transformer
 
 # Apply RKNN backend patch
 patch_sentence_transformer()
@@ -156,26 +157,24 @@ model = SentenceTransformer(
 ### 3. Use RK-Transformers API Directly
 
 ```python
-from rktransformers import RKRTModelForFeatureExtraction
 from transformers import AutoTokenizer
+
+from rktransformers import RKRTModelForFeatureExtraction
 
 # Load tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained("eacortes/all-MiniLM-L6-v2")
-model = RKRTModelForFeatureExtraction.from_pretrained(
-    "eacortes/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto"
-)
+model = RKRTModelForFeatureExtraction.from_pretrained("eacortes/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
 
 # Tokenize and run inference
 inputs = tokenizer(
     ["Sample text for embedding"],
     padding="max_length",
-    max_length=128,
     truncation=True,
     return_tensors="np",
 )
 
 outputs = model(**inputs)
-embeddings = outputs.last_hidden_state.mean(dim=1)  # Mean pooling
+embeddings = outputs.last_hidden_state.mean(axis=1)  # Mean pooling
 print(embeddings.shape)  # (1, 384)
 
 # Load specific quantized model file
@@ -184,15 +183,40 @@ model = RKRTModelForFeatureExtraction.from_pretrained(
 )
 ```
 
-### 4. Export Programmatically
+### 4. Use Transformers Pipelines
+
+```python
+from transformers import pipeline
+
+from rktransformers import RKRTModelForMaskedLM
+
+# Load the RKNN model
+model = RKRTModelForMaskedLM.from_pretrained(
+    "eacortes/bert-base-uncased", platform="rk3588", file_name="rknn/model_w8a8.rknn"
+)
+
+# Create a fill-mask pipeline with the RKNN-accelerated model
+fill_mask = pipeline(
+    "fill-mask",
+    model=model,
+    tokenizer="eacortes/bert-base-uncased",
+    framework="pt",  # required for RKNN
+)
+
+# Run inference
+results = fill_mask("Paris is the [MASK] of France.")
+print(results)
+```
+
+### 5. Export Programmatically
 
 ```python
 from rktransformers import (
     OptimizationConfig,
     QuantizationConfig,
     RKNNConfig,
-    export_rknn,
 )
+from rktransformers.exporters.rknn.convert import export_rknn
 
 config = RKNNConfig(
     model_id_or_path="sentence-transformers/all-MiniLM-L6-v2",
@@ -247,27 +271,24 @@ Rockchip SoCs with multiple NPU cores (like RK3588 with 3 cores or RK3576 with 2
 from rktransformers import RKRTModelForFeatureExtraction
 
 # Auto-select idle cores (recommended for production)
-model = RKRTModelForFeatureExtraction.from_pretrained(
-    "eacortes/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto"
-)
+model = RKRTModelForFeatureExtraction.from_pretrained("eacortes/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
 
 # Use specific core for dedicated workloads
 model = RKRTModelForFeatureExtraction.from_pretrained(
-    "my-model",
+    "eacortes/all-MiniLM-L6-v2",
     platform="rk3588",
     core_mask="1",  # Reserve core 0 for other tasks
 )
 
 # Use all cores for maximum performance
-model = RKRTModelForFeatureExtraction.from_pretrained(
-    "large-model", platform="rk3588", core_mask="all"
-)
+model = RKRTModelForFeatureExtraction.from_pretrained("eacortes/all-MiniLM-L6-v2", platform="rk3588", core_mask="all")
 ```
 
 #### Sentence Transformers Integration
 
 ```python
 from sentence_transformers import SentenceTransformer
+
 from rktransformers import patch_sentence_transformer
 
 patch_sentence_transformer()
@@ -279,7 +300,7 @@ model = SentenceTransformer(
 )
 ```
 
-## ⚠️ Limitations
+## ⚠️ RKNN Limitations
 
 ### Dynamic Inputs & Static Shapes
 
@@ -361,15 +382,9 @@ Generated during export and stored alongside the model:
     "model_input_names": ["input_ids", "attention_mask"],
     "quantized_dtype": "w8a8",
     "optimization_level": 3,
-    "rknn_version": "2.3.2",
     ...
   },
   "rknn/optimized.rknn": {
-    "platform": "rk3588",
-    "batch_size": 4,
-    "max_seq_length": 256,
-    "optimization_level": 3,
-    "compress_weight": true,
     ...
   }
 }
@@ -381,12 +396,16 @@ The keys are relative paths to `.rknn` files, allowing multiple optimized varian
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+<details><summary>Click to show local development details.</summary>
+
 ### Development Setup
 
 ```bash
 git clone https://github.com/emapco/rk-transformers.git
 cd rk-transformers
+uv venv
 uv pip install -e .[dev,export]
+uv pip install torch==2.4.0  # workaround for rknn-toolkit2 dependency
 pre-commit install
 ```
 
@@ -402,7 +421,7 @@ make test-cov
 # Run specific test categories
 pytest -m integration tests -v          # Integration tests only
 pytest -m "not slow" tests -v           # Skip slow tests
-pytest -m requires_rknn tests -v        # Tests requiring RKNN hardware
+pytest -m requires_rknpu tests -v        # Tests requiring Rockchip hardware
 ```
 
 ### Linting and Formatting
@@ -440,14 +459,15 @@ Copy-and-paste the text below in your GitHub issue:
 - HuggingFace optimum version: 2.0.0
 ```
 
+</details>
+
 ## 📄 License
 
 This project is licensed under the **Apache License 2.0**.
 
 ## 🙏 Acknowledgments
 
-- **Hugging Face** for the Transformers and Optimum libraries
-- **Sentence Transformers** for the embedding framework
+- **Hugging Face** for the `transformers`, `sentence-transformers` and `optimum` libraries
 - **Rockchip** for RKNN toolkit and NPU hardware
 
 ## 🔗 Links

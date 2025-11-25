@@ -20,7 +20,8 @@ from huggingface_hub import ModelCard, ModelCardData
 
 from rktransformers.configuration import RKNNConfig
 from rktransformers.exporters.rknn.utils import get_file_size_str, get_rk_model_class
-from rktransformers.utils.env_utils import get_rknn_toolkit_version
+from rktransformers.utils.env_utils import get_rknn_toolkit_version, get_rktransformers_version
+from rktransformers.utils.modeling_utils import check_sentence_transformer_support
 
 logger = logging.getLogger(__name__)
 
@@ -169,32 +170,6 @@ class ModelCardGenerator:
 
         return base_model, base_model_url
 
-    def _check_sentence_transformer_support(self, output_dir: str, model_id_or_path: str) -> bool:
-        """
-        Check if the model is a Sentence Transformer model.
-
-        Args:
-            output_dir: Output directory to check for ST config.
-            model_id_or_path: Model ID or path to check if local.
-
-        Returns:
-            True if Sentence Transformer configs are found.
-        """
-        st_config_files = ["config_sentence_transformers.json", "sentence_bert_config.json"]
-
-        # Check output directory
-        for config_file in st_config_files:
-            if os.path.exists(os.path.join(output_dir, config_file)):
-                return True
-
-        # Check source directory if local
-        if os.path.isdir(model_id_or_path):
-            for config_file in st_config_files:
-                if os.path.exists(os.path.join(model_id_or_path, config_file)):
-                    return True
-
-        return False
-
     def _prepare_example_paths(
         self, config: RKNNConfig, default_model_path: str, model_name: str
     ) -> tuple[str, str | None, str]:
@@ -337,7 +312,7 @@ class ModelCardGenerator:
         if config.quantization.dataset_name:
             datasets.append(config.quantization.dataset_name)
 
-        is_sentence_transformer = self._check_sentence_transformer_support(output_dir, config.model_id_or_path)
+        is_sentence_transformer = check_sentence_transformer_support(output_dir, config.model_id_or_path)
 
         rk_model_class = get_rk_model_class(config.task)
 
@@ -409,6 +384,7 @@ class ModelCardGenerator:
             quantized=config.quantization.do_quantization,
             quantized_dtype=config.quantization.quantized_dtype if config.quantization.do_quantization else "None",
             rknn_version=rknn_version,
+            rk_transformers_version=get_rktransformers_version(),
             output_path=default_model_path,
             optimized_model_path=optimized_model_path,
             example_model_path=example_model_path,

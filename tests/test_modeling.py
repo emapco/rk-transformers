@@ -27,20 +27,12 @@ from rktransformers.constants import PlatformType
 from rktransformers.modeling import RKRTModel
 
 
-@pytest.fixture
-def model_file(tmp_path: Path) -> Path:
-    """Create a temporary RKNN model file."""
-    model_path = tmp_path / "dummy.rknn"
-    model_path.touch()
-    return model_path
-
-
 class TestRKNNPlatformCheck:
     """Tests for RKNN platform compatibility checking."""
 
     @patch("rktransformers.modeling.RKNNLite")
     def test_compatible_platform(
-        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, model_file: Path
+        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
     ) -> None:
         """Test loading model with compatible platform."""
         mock_rknn = mock_rknnlite_class.return_value
@@ -50,7 +42,7 @@ class TestRKNNPlatformCheck:
             [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
         )
 
-        model = RKRTModel(config=pretrained_config, model_path=model_file, platform="rk3588")
+        model = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3588")
         assert model.rknn is not None
 
         supported = model.list_model_compatible_platform()
@@ -60,7 +52,7 @@ class TestRKNNPlatformCheck:
 
     @patch("rktransformers.modeling.RKNNLite")
     def test_incompatible_platform(
-        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, model_file: Path
+        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
     ) -> None:
         """Test loading model with incompatible platform raises error."""
         mock_rknn = mock_rknnlite_class.return_value
@@ -73,13 +65,13 @@ class TestRKNNPlatformCheck:
         with pytest.raises(RuntimeError, match="not compatible"):
             RKRTModel(
                 config=pretrained_config,
-                model_path=model_file,
+                model_path=dummy_rknn_file,
                 platform="rk3566",  # Not in supported list
             )
 
     @patch("rktransformers.modeling.RKNNLite")
     def test_case_insensitivity(
-        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, model_file: Path
+        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
     ) -> None:
         """Test that platform matching is case-insensitive."""
         mock_rknn = mock_rknnlite_class.return_value
@@ -89,7 +81,7 @@ class TestRKNNPlatformCheck:
             [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
         )
 
-        model = RKRTModel(config=pretrained_config, model_path=model_file, platform="rk3588")
+        model = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3588")
         assert model.rknn is not None
 
     @pytest.mark.parametrize(
@@ -105,7 +97,7 @@ class TestRKNNPlatformCheck:
         self,
         mock_rknnlite_class: MagicMock,
         pretrained_config: PretrainedConfig,
-        model_file: Path,
+        dummy_rknn_file: Path,
         platform: str,
         should_pass: bool,
     ) -> None:
@@ -118,15 +110,17 @@ class TestRKNNPlatformCheck:
         )
 
         if should_pass:
-            model = RKRTModel(config=pretrained_config, model_path=model_file, platform=cast(PlatformType, platform))
+            model = RKRTModel(
+                config=pretrained_config, model_path=dummy_rknn_file, platform=cast(PlatformType, platform)
+            )
             assert model.rknn is not None
         else:
             with pytest.raises(RuntimeError, match="not compatible"):
-                RKRTModel(config=pretrained_config, model_path=model_file, platform=cast(PlatformType, platform))
+                RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform=cast(PlatformType, platform))
 
     @patch("rktransformers.modeling.RKNNLite")
     def test_multiple_supported_platforms(
-        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, model_file: Path
+        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
     ) -> None:
         """Test model that supports multiple platforms."""
         mock_rknn = mock_rknnlite_class.return_value
@@ -139,14 +133,14 @@ class TestRKNNPlatformCheck:
             ]
         )
 
-        model1 = RKRTModel(config=pretrained_config, model_path=model_file, platform="rk3588")
+        model1 = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3588")
         assert model1.rknn is not None
 
-        model2 = RKRTModel(config=pretrained_config, model_path=model_file, platform="rk3568")
+        model2 = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3568")
         assert model2.rknn is not None
 
         with pytest.raises(RuntimeError, match="not compatible"):
-            RKRTModel(config=pretrained_config, model_path=model_file, platform="rk3566")
+            RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3566")
 
 
 class TestRKRTModelFileName:

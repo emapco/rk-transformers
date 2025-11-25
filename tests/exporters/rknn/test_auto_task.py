@@ -14,7 +14,18 @@
 
 from unittest.mock import MagicMock, patch
 
-from rktransformers.exporters.rknn.convert import detect_task, load_model_config
+import pytest
+
+from rktransformers.utils.import_utils import (
+    is_rknn_toolkit_available,
+)
+
+pytestmark = pytest.mark.skipif(
+    not is_rknn_toolkit_available(),
+    reason="Skipping tests that require the `export` extra but it's not installed.",
+)
+
+from rktransformers.exporters.rknn.convert import detect_task, load_model_config  # noqa: E402
 
 
 class TestAutoTaskDetection:

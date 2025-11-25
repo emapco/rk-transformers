@@ -1,5 +1,5 @@
 ---
-base_model: /home/manny/source/rknn/rkruntime/tests/data/random_roberta
+base_model: /home/manny/rk-transformers/tests/data/random_roberta
 library_name: rk-transformers
 model_name: random_roberta
 tags:
@@ -12,13 +12,14 @@ tags:
 
 # random_roberta (RKNN2)
 
-> This is an RKNN-compatible version of the [/home/manny/source/rknn/rkruntime/tests/data/random_roberta](/home/manny/source/rknn/rkruntime/tests/data/random_roberta) model. It has been optimized for Rockchip NPUs using the [rk-transformers](https://github.com/emapco/rk-transformers) library.
+> This is an RKNN-compatible version of the [/home/manny/rk-transformers/tests/data/random_roberta](/home/manny/rk-transformers/tests/data/random_roberta) model. It has been optimized for Rockchip NPUs using the [rk-transformers](https://github.com/emapco/rk-transformers) library.
 
 ## Model Details
 
-- **Original Model:** [/home/manny/source/rknn/rkruntime/tests/data/random_roberta](/home/manny/source/rknn/rkruntime/tests/data/random_roberta)
+- **Original Model:** [/home/manny/rk-transformers/tests/data/random_roberta](/home/manny/rk-transformers/tests/data/random_roberta)
 - **Target Platform:** rk3588
 - **rknn-toolkit2 Version:** 2.3.2
+- **rk-transformers Version:** 0.1.0
 
 ### Available Model Files
 

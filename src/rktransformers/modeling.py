@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import sys
+from abc import ABC
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,7 @@ from .constants import (
     PlatformType,
 )
 from .utils.env_utils import get_edge_host_platform
+from .utils.logging_utils import suppress_output
 
 logger = logging.get_logger(__name__)
 
@@ -128,7 +130,13 @@ TEXT_INPUTS_DOCSTRING = r"""
 """
 
 
+# workaround to enable compatibility between rk-transformers models and transformers pipelines
+class PreTrainedModel(ABC):  # noqa: B024
+    pass
+
+
 class RKRTModel(
+    PreTrainedModel,
     ModelHubMixin,
     library_name="rk-transformers",
     tags=["rknn", "rockchip", "npu"],
@@ -146,6 +154,7 @@ class RKRTModel(
         platform: PlatformType | None = None,
         core_mask: CoreMaskType = "auto",
         rknn_config: RKNNConfig | None = None,
+        max_seq_length: int = 512,
     ) -> None:
         if config is None:
             raise ValueError("A Hugging Face config is required to build an RKRT model.")
@@ -155,20 +164,31 @@ class RKRTModel(
         self.model_filename = self.model_path.name
         self.platform = platform or get_edge_host_platform()
         self.core_mask = core_mask
-        self.rknn_config = rknn_config or RKNNConfig()
+        self.rknn_config = rknn_config
 
-        if self.rknn_config.model_input_names:
-            self.input_names = self.rknn_config.model_input_names
-        else:
-            self.input_names = ["input_ids", "attention_mask"]
-            if getattr(config, "type_vocab_size", 1) > 1:
-                self.input_names.append("token_type_ids")
+        # Set defaults for input_names and max_seq_length
+        self.input_names = ["input_ids", "attention_mask"]
+        if getattr(config, "type_vocab_size", 1) > 1:
+            self.input_names.append("token_type_ids")
+        self.max_seq_length = max_seq_length
+
+        if self.rknn_config:
+            if hasattr(self.rknn_config, "model_input_names") and self.rknn_config.model_input_names:
+                self.input_names = self.rknn_config.model_input_names
+
+            if hasattr(self.rknn_config, "max_seq_length") and self.rknn_config.max_seq_length is not None:
+                self.max_seq_length = self.rknn_config.max_seq_length
 
         self.rknn = self._load_rknn_model()
 
+        # From optimum.onnxruntime.modeling.ORTModel
         AutoConfig.register(self.model_type, AutoConfig)
         if hasattr(self.auto_model_class, "register"):
             self.auto_model_class.register(AutoConfig, self.__class__)
+
+    def __call__(self, *args, **kwargs):
+        """Make RKRTModel callable to work with Transformers/SentenceTransformers"""
+        return self.forward(*args, **kwargs)
 
     def forward(self, *args: Any, **kwargs: Any) -> ModelOutput | tuple[torch.Tensor | np.ndarray] | None:
         """Define the computation performed at every call.
@@ -177,15 +197,21 @@ class RKRTModel(
         """
         raise NotImplementedError(f'Module [{type(self).__name__}] is missing the required "forward" function')
 
-    def __call__(self, *args, **kwargs):
-        """Make RKRTModel callable to work with Transformer/SentenceTransformer"""
-        return self.forward(*args, **kwargs)
+    @property
+    def device(self) -> torch.device:
+        """Return the device on which the model is stored."""
+        return torch.device("cpu")
+
+    def to(self, device: torch.device | str) -> "RKRTModel":
+        """No-op for RKRTModel. For compatibility with Hugging Face Transformers Pipelines."""
+        return self
 
     def _release(self) -> None:
         """Release RKNNLite resources following RKNN-toolkit2 best practices."""
         if getattr(self, "rknn", None) is not None:
             assert self.rknn is not None
-            self.rknn.release()
+            with contextlib.suppress(Exception), suppress_output():
+                self.rknn.release()
             self.rknn = None
 
     def __del__(self) -> None:  # pragma: no cover - destructor safety
@@ -198,8 +224,9 @@ class RKRTModel(
         """
         if self.rknn is None:
             return None
-        if hasattr(self.rknn, "list_support_target_platform") and callable(self.rknn.list_support_target_platform):  # type: ignore
-            return self.rknn.list_support_target_platform(self.model_path.as_posix())  # type: ignore
+        with suppress_output():
+            if hasattr(self.rknn, "list_support_target_platform") and callable(self.rknn.list_support_target_platform):  # type: ignore
+                return self.rknn.list_support_target_platform(self.model_path.as_posix())  # type: ignore
         return None
 
     def _load_rknn_model(self) -> RKNNLite:
@@ -207,16 +234,21 @@ class RKRTModel(
         if not self.model_path.exists():
             raise FileNotFoundError(f"RKNN model not found: {self.model_path}")
 
-        rknn = RKNNLite(verbose=False)
-        logger.debug("Loading RKNN model from %s", self.model_path)
-        ret = rknn.load_rknn(self.model_path.as_posix())
+        # Suppress RKNNLite C-level logging
+        with suppress_output():
+            rknn = RKNNLite(verbose=False)
+            logger.debug("Loading RKNN model from %s", self.model_path)
+            ret = rknn.load_rknn(self.model_path.as_posix())
         if ret != 0:
             raise RuntimeError("Failed to load RKNN model")
 
         # Check model-platform compatibility
         supported_platforms = None
         if hasattr(rknn, "list_support_target_platform") and callable(rknn.list_support_target_platform):  # type: ignore
-            supported_platforms: dict[str, Any] | None = rknn.list_support_target_platform(self.model_path.as_posix())  # type: ignore
+            with suppress_output():
+                supported_platforms: dict[str, Any] | None = rknn.list_support_target_platform(
+                    self.model_path.as_posix()
+                )  # type: ignore
 
         if supported_platforms is not None:
             # The return value is an OrderedDict with a key 'support_target_platform' and 'filled_target_platform'
@@ -245,9 +277,11 @@ class RKRTModel(
                 "all": RKNNLite.NPU_CORE_ALL,
             }
             npu_core = core_mask_map.get(self.core_mask, RKNNLite.NPU_CORE_AUTO)
-            ret = rknn.init_runtime(core_mask=npu_core)
+            with suppress_output():
+                ret = rknn.init_runtime(core_mask=npu_core)
         else:
-            ret = rknn.init_runtime()
+            with suppress_output():
+                ret = rknn.init_runtime()
 
         if ret != 0:
             raise RuntimeError("Failed to initialize RKNN runtime")
@@ -287,6 +321,22 @@ class RKRTModel(
             return torch.zeros_like(reference)
         return np.zeros_like(np.asarray(reference))
 
+    def _pad_to_max_length(
+        self,
+        tensor: torch.Tensor | np.ndarray,
+        max_length: int,
+        use_torch: bool,
+    ) -> torch.Tensor | np.ndarray:
+        current_length = tensor.shape[1]
+        # Early exit if already at max length
+        if current_length >= max_length:
+            return tensor
+
+        pad_width = max_length - current_length
+        if use_torch:
+            return torch.nn.functional.pad(tensor, (0, pad_width))  # type: ignore
+        return np.pad(tensor, ((0, 0), (0, pad_width)))  # type: ignore
+
     def _prepare_text_inputs(
         self,
         input_ids: torch.Tensor | np.ndarray | None,
@@ -303,8 +353,15 @@ class RKRTModel(
             raise ValueError("`input_ids` is required for RKRT text inference.")
         if attention_mask is None:
             attention_mask = self._ones_like(input_ids, use_torch)
-        if "token_type_ids" in self.input_names and token_type_ids is None:
-            token_type_ids = self._zeros_like(input_ids, use_torch)
+
+        input_ids = self._pad_to_max_length(input_ids, self.max_seq_length, use_torch)
+        attention_mask = self._pad_to_max_length(attention_mask, self.max_seq_length, use_torch)
+
+        if "token_type_ids" in self.input_names:
+            if token_type_ids is None:
+                token_type_ids = self._zeros_like(input_ids, use_torch)  # Use padded input_ids as reference
+            else:
+                token_type_ids = self._pad_to_max_length(token_type_ids, self.max_seq_length, use_torch)
 
         return use_torch, {
             "input_ids": input_ids,
@@ -328,9 +385,12 @@ class RKRTModel(
         if self.rknn is None:
             raise RuntimeError("RKNN runtime has been released and can no longer run inference.")
 
-        outputs = self.rknn.inference(inputs=ordered_inputs)
+        # Suppress RKNN inference logs
+        with suppress_output():
+            outputs = self.rknn.inference(inputs=ordered_inputs)
         if outputs is None:
-            raise RuntimeError("RKNN inference returned None.")
+            input_summaries = [f"shape={arr.shape}, dtype={arr.dtype}" for arr in ordered_inputs]
+            raise RuntimeError(f"RKNN inference returned None - input summary: {input_summaries}")
         if len(outputs) < len(expected_outputs):
             logger.error(
                 "RKNN inference output mismatch: expected %d outputs (%s), got %d outputs",
@@ -367,7 +427,6 @@ class RKRTModel(
         local_files_only: bool = False,
         token: bool | str | None = None,
         cache_dir: str | Path = HF_HUB_CACHE,
-        resume_download: bool | None = False,
         proxies: dict | None = None,
     ) -> Path:
         cached_path = cached_file(
@@ -379,7 +438,6 @@ class RKRTModel(
             force_download=force_download,
             local_files_only=local_files_only,
             token=token,
-            resume_download=resume_download,
             proxies=proxies,
         )
         if cached_path is None:
@@ -473,7 +531,6 @@ class RKRTModel(
         local_files_only: bool,
         token: str | bool | None,
         trust_remote_code: bool,
-        resume_download: bool | None = False,
         proxies: dict | None = None,
     ) -> PretrainedConfig:
         if isinstance(config, PretrainedConfig):
@@ -489,7 +546,6 @@ class RKRTModel(
                 local_files_only=local_files_only,
                 token=token,
                 trust_remote_code=trust_remote_code,
-                resume_download=resume_download,
                 proxies=proxies,
             )
         except Exception as exc:
@@ -533,26 +589,6 @@ class RKRTModel(
         if is_offline_mode() and not local_files_only:
             local_files_only = True
 
-        # Try to load rknn.json first to guide file selection
-        if not os.path.isfile(model_id):
-            # Try to download/load rknn.json
-            with contextlib.suppress(FileNotFoundError):
-                rknn_json_path = cls._cached_file(
-                    model_id,
-                    filename="rknn.json",
-                    subfolder=subfolder,
-                    local_files_only=local_files_only,
-                    force_download=force_download,
-                    cache_dir=cache_dir,
-                    revision=revision,
-                    token=token,
-                    resume_download=resume_download,
-                    proxies=proxies,
-                )
-                # We just ensure it's cached here, we'll use it later
-                if os.path.exists(rknn_json_path):
-                    pass
-
         if os.path.isfile(model_id):
             model_path = Path(model_id)
         elif file_name is not None:
@@ -565,7 +601,6 @@ class RKRTModel(
                 cache_dir=cache_dir,
                 revision=revision,
                 token=token,
-                resume_download=resume_download,
                 proxies=proxies,
             )
         else:
@@ -608,19 +643,36 @@ class RKRTModel(
                 cache_dir=cache_dir,
                 revision=revision,
                 token=token,
-                resume_download=resume_download,
                 proxies=proxies,
             )
 
         # Load rknn.json to get specific model configuration if available
         model_rknn_config = None
-        with contextlib.suppress(Exception):
-            # Try to find rknn.json in the model directory or its parent
-            rknn_json_path = model_path.parent / "rknn.json"
-            if not rknn_json_path.exists():
-                rknn_json_path = model_path.parent.parent / "rknn.json"
+        rknn_json_path = None
 
-            if rknn_json_path.exists():
+        # Try to load rknn.json using cached_file for both local and remote models
+        if os.path.isdir(model_id):
+            # Local directory
+            local_rknn_path = Path(model_id) / "rknn.json"
+            if local_rknn_path.exists():
+                rknn_json_path = local_rknn_path
+        else:
+            # Remote model or cached model - use cached_file
+            with contextlib.suppress(Exception):
+                rknn_json_path = cls._cached_file(
+                    model_id,
+                    filename="rknn.json",
+                    subfolder=subfolder,
+                    local_files_only=local_files_only,
+                    force_download=force_download,
+                    cache_dir=cache_dir,
+                    revision=revision,
+                    token=token,
+                    proxies=proxies,
+                )
+
+        if rknn_json_path:
+            try:
                 with open(rknn_json_path) as f:
                     full_config = json.load(f)
 
@@ -630,6 +682,8 @@ class RKRTModel(
                     if key.endswith(filename):
                         model_rknn_config = RKNNConfig.from_dict(conf)
                         break
+            except Exception as e:
+                logger.warning(f"Failed to load rknn.json: {e}")
 
         resolved_config = cls._resolve_config(
             model_id,
@@ -640,7 +694,6 @@ class RKRTModel(
             local_files_only=local_files_only,
             token=token,
             trust_remote_code=trust_remote_code,
-            resume_download=resume_download,
             proxies=proxies,
         )
 
@@ -685,7 +738,6 @@ class RKRTModel(
             subfolder=subfolder,
             revision=revision,
             force_download=force_download,
-            resume_download=resume_download,
             proxies=proxies,
             token=token,
             local_files_only=local_files_only,

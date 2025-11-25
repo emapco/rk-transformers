@@ -104,7 +104,6 @@ def load_model(args: argparse.Namespace) -> Any:
         revision=args.revision,
         cache_dir=args.cache_dir,
         force_download=args.force_download,
-        resume_download=args.resume_download,
         local_files_only=args.local_files_only,
         trust_remote_code=args.trust_remote_code,
         token=args.token,

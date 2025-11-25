@@ -15,12 +15,11 @@
 __version__ = "0.1.0"
 
 
-from .export import OptimizationConfig, QuantizationConfig, RKNNConfig, export_rknn
+from .configuration import OptimizationConfig, QuantizationConfig, RKNNConfig
 from .load import patch_sentence_transformer
 from .modeling import RKRTModel, RKRTModelForFeatureExtraction, RKRTModelForMaskedLM, RKRTModelForSequenceClassification
 
 __all__ = [
-    "export_rknn",
     "RKNNConfig",
     "QuantizationConfig",
     "OptimizationConfig",

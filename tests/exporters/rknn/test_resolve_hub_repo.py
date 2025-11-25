@@ -16,7 +16,16 @@ from unittest.mock import patch
 
 import pytest
 
-from rktransformers.exporters.rknn.utils import resolve_hub_repo_id
+from rktransformers.utils.import_utils import (
+    is_rknn_toolkit_available,
+)
+
+pytestmark = pytest.mark.skipif(
+    not is_rknn_toolkit_available(),
+    reason="Skipping tests that require the `export` extra but it's not installed.",
+)
+
+from rktransformers.exporters.rknn.utils import resolve_hub_repo_id  # noqa: E402
 
 
 class TestResolveHubRepoId:

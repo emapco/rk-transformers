@@ -340,6 +340,7 @@ def patch_sentence_transformer():
                 break
 
         if not rknn_config or "batch_size" not in rknn_config:
+            kwargs["batch_size"] = batch_size
             return original_encode(self, sentences, **kwargs)
 
         rknn_batch_size = rknn_config["batch_size"]
@@ -359,7 +360,7 @@ def patch_sentence_transformer():
             return original_encode(self, sentences, **kwargs)
 
         # For non-sentence-transformers models (e.g. bert-base-uncased), we need to batch manually.
-        # Otherwise, the Pooling layer causes a runtime error due to misshaped tensors.
+        # Otherwise, the Pooling layer causes a runtime error due to misshapen tensors.
         if isinstance(sentences, str):
             sentences = [sentences]
 

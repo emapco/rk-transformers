@@ -166,18 +166,18 @@ class RKRTModel(
         self.core_mask = core_mask
         self.rknn_config = rknn_config
 
+        # Set defaults for input_names and max_seq_length
+        self.input_names = ["input_ids", "attention_mask"]
+        if getattr(config, "type_vocab_size", 1) > 1:
+            self.input_names.append("token_type_ids")
+        self.max_seq_length = max_seq_length
+
         if self.rknn_config:
             if hasattr(self.rknn_config, "model_input_names") and self.rknn_config.model_input_names:
                 self.input_names = self.rknn_config.model_input_names
-            else:
-                self.input_names = ["input_ids", "attention_mask"]
-                if getattr(config, "type_vocab_size", 1) > 1:
-                    self.input_names.append("token_type_ids")
 
             if hasattr(self.rknn_config, "max_seq_length") and self.rknn_config.max_seq_length is not None:
                 self.max_seq_length = self.rknn_config.max_seq_length
-            else:
-                self.max_seq_length = max_seq_length
 
         self.rknn = self._load_rknn_model()
 

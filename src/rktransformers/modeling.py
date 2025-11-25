@@ -389,7 +389,8 @@ class RKRTModel(
         with suppress_output():
             outputs = self.rknn.inference(inputs=ordered_inputs)
         if outputs is None:
-            raise RuntimeError(f"RKNN inference returned None - inputs={ordered_inputs}")
+            input_summaries = [f"shape={arr.shape}, dtype={arr.dtype}" for arr in ordered_inputs]
+            raise RuntimeError(f"RKNN inference returned None - input summary: {input_summaries}")
         if len(outputs) < len(expected_outputs):
             logger.error(
                 "RKNN inference output mismatch: expected %d outputs (%s), got %d outputs",

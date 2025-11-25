@@ -164,8 +164,6 @@ def patch_sentence_transformer():
                     file_name = "model.rknn"
                 elif rknn_config:
                     file_name = next(iter(rknn_config))  # First key in rknn_config
-                # Note: Fallback file discovery is handled by RKRTModel.from_pretrained
-                # We don't need to do directory scanning here
 
             if file_name:
                 if file_name in rknn_config:

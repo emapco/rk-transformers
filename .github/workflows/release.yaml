@@ -1,0 +1,42 @@
+name: PyPI Release
+
+on:
+  push:
+    branches:
+      - "releases/**"
+jobs:
+  release-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+      - name: build release distributions
+        run: |
+          python -m pip install build
+          python -m build
+      - name: upload dists
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-dists
+          path: dist/
+
+  pypi-publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/rk-transformers
+    needs:
+      - release-build
+    permissions:
+      id-token: write
+    steps:
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v6
+        with:
+          name: release-dists
+          path: dist/
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

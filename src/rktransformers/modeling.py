@@ -202,9 +202,9 @@ class RKRTModel(
         """Return the device on which the model is stored."""
         return torch.device("cpu")
 
-    def to(self, device: torch.device | str) -> None:
+    def to(self, device: torch.device | str) -> "RKRTModel":
         """No-op for RKRTModel. For compatibility with Hugging Face Transformers Pipelines."""
-        pass
+        return self
 
     def _release(self) -> None:
         """Release RKNNLite resources following RKNN-toolkit2 best practices."""

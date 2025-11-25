@@ -18,15 +18,19 @@ import contextlib
 import os
 import sys
 
-_null_fds: list = []
-_save_fds: list = []
-
 
 @contextlib.contextmanager
 def suppress_output():
     """
     Context manager to suppress stdout and stderr from RKNN/RKNNLite C-level logs.
+
+    This context manager redirects file descriptors 1 (stdout) and 2 (stderr)
+    to /dev/null, suppressing output at the OS level. This is necessary for
+    silencing C-level output from libraries like RKNN/RKNNLite that bypass
+    Python's stdout/stderr redirection.
     """
+    null_fds = []
+    save_fds = []
 
     try:
         # Flush Python buffers to ensure order (if they still exist)
@@ -36,14 +40,13 @@ def suppress_output():
             sys.stderr.flush()
 
         # Open a pair of null files
-        global _null_fds, _save_fds
-        _null_fds = [os.open(os.devnull, os.O_RDWR) for x in range(2)]
+        null_fds = [os.open(os.devnull, os.O_RDWR) for _ in range(2)]
         # Save the actual stdout (1) and stderr (2) file descriptors.
-        _save_fds = [os.dup(1), os.dup(2)]
+        save_fds = [os.dup(1), os.dup(2)]
 
         # Assign the null pointers to stdout and stderr.
-        os.dup2(_null_fds[0], 1)
-        os.dup2(_null_fds[1], 2)
+        os.dup2(null_fds[0], 1)
+        os.dup2(null_fds[1], 2)
 
         yield
     except Exception:
@@ -58,10 +61,10 @@ def suppress_output():
                 sys.stderr.flush()
 
             # Re-assign the real stdout/stderr back to (1) and (2)
-            if _save_fds:
-                os.dup2(_save_fds[0], 1)
-                os.dup2(_save_fds[1], 2)
+            if save_fds:
+                os.dup2(save_fds[0], 1)
+                os.dup2(save_fds[1], 2)
 
             # Close the null files and saved fds
-            for fd in _null_fds + _save_fds:
+            for fd in null_fds + save_fds:
                 os.close(fd)

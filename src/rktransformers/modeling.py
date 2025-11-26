@@ -279,6 +279,8 @@ class RKRTModel(
             npu_core = core_mask_map.get(self.core_mask, RKNNLite.NPU_CORE_AUTO)
             with suppress_output():
                 ret = rknn.init_runtime(core_mask=npu_core)
+                if ret != 0:
+                    ret = rknn.init_runtime(target=self.platform, core_mask=npu_core)
         else:
             with suppress_output():
                 ret = rknn.init_runtime()
@@ -780,7 +782,7 @@ class RKRTModelForFeatureExtraction(RKRTModel):
         + FEATURE_EXTRACTION_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
             model_class="RKRTModelForFeatureExtraction",
-            checkpoint="eacortes/all-MiniLM-L6-v2",
+            checkpoint="rk-transformers/all-MiniLM-L6-v2",
         )
     )
     def forward(
@@ -833,7 +835,7 @@ class RKRTModelForMaskedLM(RKRTModel):
         + MASKED_LM_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
             model_class="RKRTModelForMaskedLM",
-            checkpoint="eacortes/bert-base-uncased",
+            checkpoint="rk-transformers/bert-base-uncased",
         )
     )
     def forward(
@@ -886,7 +888,7 @@ class RKRTModelForSequenceClassification(RKRTModel):
         + SEQUENCE_CLASSIFICATION_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
             model_class="RKRTModelForSequenceClassification",
-            checkpoint="eacortes/distilbert-base-uncased-finetuned-sst-2-english",
+            checkpoint="rk-transformers/distilbert-base-uncased-finetuned-sst-2-english",
         )
     )
     def forward(

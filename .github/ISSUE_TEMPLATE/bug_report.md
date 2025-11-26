@@ -29,11 +29,11 @@ In short, we are going to copy-paste your code to run it and we expect to get th
 - Operating system: 
 - Rockchip Board: 
 - Rockchip SoC: 
-- RKNPU2 Driver version: 
 - RKNN Runtime version: 
 - RKNN Toolkit version: 
 - Python version: 
 - PyTorch version: 
 - HuggingFace transformers version: 
 - HuggingFace optimum version:
+- rk-transformers version:
 -->

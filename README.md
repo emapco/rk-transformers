@@ -2,9 +2,12 @@
 
 <div align="center">
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](https://github.com/emapco/rk-transformers)
+[![huggingface](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-FFD21E)](https://huggingface.co/rk-transformers)
+[![Python 3.10-3.12](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://www.python.org/downloads/)
+[![PyPI - Version](https://img.shields.io/pypi/v/rk-transformers)](https://pypi.org/project/rk-transformers/)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/emapco/rk-transformers/ci.yml)](https://github.com/emapco/rk-transformers/actions)
+![Status](https://img.shields.io/pypi/status/rk-transformers)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/emapco/rk-transformers/blob/main/LICENSE)
 [![Star on GitHub](https://img.shields.io/github/stars/emapco/rk-transformers?style=social)](https://github.com/emapco/rk-transformers)
 
 </div>
@@ -64,8 +67,8 @@ This installs runtime dependencies including:
 
 ```bash
 uv venv
-uv pip install rk-transformers[export]
-uv pip install torch==2.4.0  # workaround for rknn-toolkit2 dependency
+uv pip install rk-transformers[dev,export]
+uv pip install torch==2.6.0+cpu --index-url https://download.pytorch.org/whl/cpu # workaround for rknn-toolkit2 dependency
 ```
 
 This installs export dependencies including:
@@ -85,7 +88,7 @@ cd rk-transformers
 # Install with development tools
 uv venv
 uv pip install -e .[dev,export]
-uv pip install torch==2.4.0  # workaround for rknn-toolkit2 dependency
+uv pip install torch==2.6.0+cpu --index-url https://download.pytorch.org/whl/cpu # workaround for rknn-toolkit2 dependency
 ```
 
 Development dependencies include:
@@ -126,6 +129,7 @@ rk-transformers-cli export \
 
 ### 2. Run Inference with Sentence Transformers
 
+#### SentenceTransformer
 ```python
 from sentence_transformers import SentenceTransformer
 
@@ -136,7 +140,7 @@ patch_sentence_transformer()
 
 # Load model with RKNN backend
 model = SentenceTransformer(
-    "eacortes/all-MiniLM-L6-v2",
+    "rk-transformers/all-MiniLM-L6-v2",
     backend="rknn",
     model_kwargs={"platform": "rk3588", "core_mask": "all"},
 )
@@ -148,10 +152,32 @@ print(embeddings.shape)  # (2, 384)
 
 # Load specific quantized model file
 model = SentenceTransformer(
-    "eacortes/all-MiniLM-L6-v2",
+    "rk-transformers/all-MiniLM-L6-v2",
     backend="rknn",
     model_kwargs={"platform": "rk3588", "file_name": "rknn/model_w8a8.rknn"},
 )
+```
+
+#### CrossEncoder
+```python
+from sentence_transformers import CrossEncoder
+
+from rktransformers import patch_cross_encoder
+
+# Apply RKNN backend patch
+patch_cross_encoder()
+
+# Load CrossEncoder model with RKNN backend
+model = CrossEncoder(
+    "rk-transformers/bge-reranker-base",
+    backend="rknn",
+    model_kwargs={"platform": "rk3588", "core_mask": "auto"},
+)
+
+# Perform inference
+pairs = [["How old are you?", "What is your age?"], ["Hello world", "Hi there!"]]
+scores = model.predict(pairs)
+print(scores)  # e.g., [0.85, 0.12]
 ```
 
 ### 3. Use RK-Transformers API Directly
@@ -162,8 +188,8 @@ from transformers import AutoTokenizer
 from rktransformers import RKRTModelForFeatureExtraction
 
 # Load tokenizer and model
-tokenizer = AutoTokenizer.from_pretrained("eacortes/all-MiniLM-L6-v2")
-model = RKRTModelForFeatureExtraction.from_pretrained("eacortes/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
+tokenizer = AutoTokenizer.from_pretrained("rk-transformers/all-MiniLM-L6-v2")
+model = RKRTModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
 
 # Tokenize and run inference
 inputs = tokenizer(
@@ -179,7 +205,7 @@ print(embeddings.shape)  # (1, 384)
 
 # Load specific quantized model file
 model = RKRTModelForFeatureExtraction.from_pretrained(
-    "eacortes/all-MiniLM-L6-v2", platform="rk3588", file_name="rknn/model_w8a8.rknn"
+    "rk-transformers/all-MiniLM-L6-v2", platform="rk3588", file_name="rknn/model_w8a8.rknn"
 )
 ```
 
@@ -192,14 +218,14 @@ from rktransformers import RKRTModelForMaskedLM
 
 # Load the RKNN model
 model = RKRTModelForMaskedLM.from_pretrained(
-    "eacortes/bert-base-uncased", platform="rk3588", file_name="rknn/model_w8a8.rknn"
+    "rk-transformers/bert-base-uncased", platform="rk3588", file_name="rknn/model_w8a8.rknn"
 )
 
 # Create a fill-mask pipeline with the RKNN-accelerated model
 fill_mask = pipeline(
     "fill-mask",
     model=model,
-    tokenizer="eacortes/bert-base-uncased",
+    tokenizer="rk-transformers/bert-base-uncased",
     framework="pt",  # required for RKNN
 )
 
@@ -271,17 +297,17 @@ Rockchip SoCs with multiple NPU cores (like RK3588 with 3 cores or RK3576 with 2
 from rktransformers import RKRTModelForFeatureExtraction
 
 # Auto-select idle cores (recommended for production)
-model = RKRTModelForFeatureExtraction.from_pretrained("eacortes/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
+model = RKRTModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
 
 # Use specific core for dedicated workloads
 model = RKRTModelForFeatureExtraction.from_pretrained(
-    "eacortes/all-MiniLM-L6-v2",
+    "rk-transformers/all-MiniLM-L6-v2",
     platform="rk3588",
     core_mask="1",  # Reserve core 0 for other tasks
 )
 
 # Use all cores for maximum performance
-model = RKRTModelForFeatureExtraction.from_pretrained("eacortes/all-MiniLM-L6-v2", platform="rk3588", core_mask="all")
+model = RKRTModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="all")
 ```
 
 #### Sentence Transformers Integration
@@ -294,7 +320,7 @@ from rktransformers import patch_sentence_transformer
 patch_sentence_transformer()
 
 model = SentenceTransformer(
-    "eacortes/all-MiniLM-L6-v2",
+    "rk-transformers/all-MiniLM-L6-v2",
     backend="rknn",
     model_kwargs={"platform": "rk3588", "core_mask": "auto"}
 )
@@ -405,7 +431,7 @@ git clone https://github.com/emapco/rk-transformers.git
 cd rk-transformers
 uv venv
 uv pip install -e .[dev,export]
-uv pip install torch==2.4.0  # workaround for rknn-toolkit2 dependency
+uv pip install torch==2.6.0+cpu --index-url https://download.pytorch.org/whl/cpu # workaround for rknn-toolkit2 dependency
 pre-commit install
 ```
 
@@ -450,13 +476,13 @@ Copy-and-paste the text below in your GitHub issue:
 - Operating system: Linux-5.10.160-rockchip-rk3588
 - Rockchip Board: Orange Pi 5 Plus
 - Rockchip SoC: rk3588
-- RKNPU2 Driver version: 0.9.8
 - RKNN Runtime version: 2.3.2
 - RKNN Toolkit version: rknn-toolkit-lite2==2.3.2
 - Python version: 3.12.9
-- PyTorch version: 2.4.0+cpu
+- PyTorch version: 2.6.0+cpu
 - HuggingFace transformers version: 4.55.4
 - HuggingFace optimum version: 2.0.0
+- rk-transformers version: 0.1.0
 ```
 
 </details>

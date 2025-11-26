@@ -26,6 +26,7 @@ from rktransformers.constants import (
     QUANTIZED_ALGORITHM_CHOICES,
     QUANTIZED_DTYPE_CHOICES,
     QUANTIZED_METHOD_CHOICES,
+    SUPPORTED_OPSETS,
     SUPPORTED_TASK_CHOICES,
 )
 from rktransformers.exporters.rknn.convert import export_rknn
@@ -104,6 +105,12 @@ def parse_args_rknn(parser: ArgumentParser):
         "--single-core-mode",
         action="store_true",
         help="Enable single NPU core mode (only applicable for rk3588). Reduces model size.",
+    )
+
+    optimization_group.add_argument(
+        "--enable-custom-kernels",
+        action="store_true",
+        help="Enable custom kernels (e.g., CumSum) for operations not supported by RKNN.",
     )
 
     quantization_group = parser.add_argument_group("Quantization arguments")
@@ -201,8 +208,10 @@ def parse_args_rknn(parser: ArgumentParser):
         "--opset",
         type=int,
         default=DEFAULT_OPSET,
+        choices=SUPPORTED_OPSETS,
         help="ONNX opset version. Recommended: 18+ for modern transformers. "
-        f"Might need to lower the opset for certain models. Default: {DEFAULT_OPSET}.",
+        "Minimum: 14 (required for SDPA). Maximum: 19. (maximum supported by RKNN). "
+        f"Default: {DEFAULT_OPSET}.",
     )
     optimum_group.add_argument(
         "--task",
@@ -210,8 +219,11 @@ def parse_args_rknn(parser: ArgumentParser):
         default="auto",
         choices=SUPPORTED_TASK_CHOICES,
         help="ONNX task type for export. Default: auto. "
-        "Auto-detection uses the model's architecture to determine the task "
-        "(e.g., sequence-classification, fill-mask). Falls back to feature-extraction if undetermined.",
+        "Auto-detection uses `optimum` to determine the task "
+        "(e.g., sequence-classification, fill-mask). Falls back to feature-extraction if undetermined. "
+        "'auto' can be used to export models supported by `optimum` and not rk-transformers runtime functionality, "
+        "in which case, the user is responsible for developing inference code using "
+        "rknn-toolkit-lite2 library or subclassing `rktransformers.RKRTModel`.",
     )
 
     hub_group = parser.add_argument_group("Hugging Face Hub arguments")
@@ -296,6 +308,7 @@ class RKNNExportCommand(BaseRKNNCLICommand):
             target_platform=self.args.platform,
             quantization=quantization_config,
             optimization=optimization_config,
+            enable_custom_kernels=self.args.enable_custom_kernels,
             model_input_names=model_input_names,
             model_id_or_path=self.args.model,
             output_path=str(self.args.output) if self.args.output else None,

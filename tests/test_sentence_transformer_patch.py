@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for RKNN patches to SentenceTransformers."""
+"""Tests for RKNN backend integration with SentenceTransformer."""
 
 from pathlib import Path
 
@@ -39,7 +39,7 @@ def setup_module() -> None:
 
 
 @pytest.mark.requires_rknpu
-class TestRKNNPatch:
+class TestSentenceTransformersenceTransformerPatch:
     """Tests for RKNN backend integration with SentenceTransformers."""
 
     def test_load_rknn_model(self, random_bert_model_path: Path) -> None:
@@ -113,11 +113,6 @@ class TestRKNNPatch:
         assert isinstance(model.max_seq_length, int)
         assert model.max_seq_length > 0
 
-
-@pytest.mark.requires_rknpu
-class TestEncodePatch:
-    """Tests for patched SentenceTransformer.encode method with RKNN backend."""
-
     @pytest.mark.parametrize("batch_size", [1, 4])
     def test_encode_with_rknn_model(self, random_bert_model_path: Path, batch_size: int) -> None:
         """Test that encode works correctly with RKNN backend.
@@ -163,15 +158,15 @@ class TestEncodePatch:
         assert embeddings.shape[0] == 0
 
 
-integration_sentence_transformer_model_id = "eacortes/all-MiniLM-L6-v2"
-integration_transformer_model_model_id = "eacortes/bert-base-uncased"
+integration_sentence_transformer_model_id = "rk-transformers/all-MiniLM-L6-v2"
+integration_transformer_model_model_id = "rk-transformers/bert-base-uncased"
 
 
 @pytest.mark.slow
 @pytest.mark.manual
 @pytest.mark.integration
 @pytest.mark.requires_rknpu
-class TestRKNNPatchIntegration:
+class TestSentenceTransformerPatchIntegration:
     """Integration tests for RKNN backend with SentenceTransformers."""
 
     @pytest.mark.parametrize(

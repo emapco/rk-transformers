@@ -16,7 +16,6 @@ import contextlib
 import logging
 import os
 import shutil
-from typing import cast
 
 from huggingface_hub import HfApi, create_repo, snapshot_download
 from optimum.exporters.onnx import main_export
@@ -27,17 +26,18 @@ from rktransformers.constants import (
     ALLOW_MODEL_REPO_FILES,
     DEFAULT_MAX_SEQ_LENGTH,
     IGNORE_MODEL_REPO_FILES,
-    SupportedTaskType,
 )
 from rktransformers.exporters.rknn.model_card import ModelCardGenerator
+from rktransformers.kernels import ALL_KERNELS
 
 from .utils import (
     clean_intermediate_onnx_files,
-    detect_task,
+    download_sentence_transformer_modules_weights,
     generate_rknn_output_path,
     get_onnx_input_names,
     load_model_config,
     prepare_dataset_for_quantization,
+    replace_onnx_op,
     resolve_hub_repo_id,
     store_rknn_json,
 )
@@ -68,10 +68,14 @@ def export_rknn(config: RKNNConfig) -> None:
 
     # Capture original model ID for model card
     base_model_id = config.model_id_or_path
-
     # Check if model_id_or_path is a local file
     # Consider it local if it has .onnx extension or exists on disk
     is_local_model = config.model_id_or_path.endswith(".onnx") or os.path.exists(config.model_id_or_path)
+    # Track paths separately for different purposes:
+    # - onnx_model_path: path to the ONNX file for RKNN loading
+    # - model_config_path: path to model directory/Hub ID for config loading
+    onnx_model_path = None
+    model_config_path = None
 
     if not is_local_model:
         logger.info(f"Model path '{config.model_id_or_path}' not found locally. Treating as Hugging Face Hub ID.")
@@ -101,12 +105,16 @@ def export_rknn(config: RKNNConfig) -> None:
 
         try:
             # Download all model files (config, tokenizer, etc.) but exclude weights
-            # This ensures we have files like modules.json, sentence_bert_config.json, etc.
             snapshot_download(
                 repo_id=config.model_id_or_path,
                 local_dir=output_dir,
                 ignore_patterns=IGNORE_MODEL_REPO_FILES,
                 allow_patterns=ALLOW_MODEL_REPO_FILES,
+            )
+            download_sentence_transformer_modules_weights(
+                repo_id=config.model_id_or_path,
+                local_dir=output_dir,
+                token=config.hub_token,
             )
 
             cache_dir = os.path.join(output_dir, ".cache")
@@ -115,18 +123,10 @@ def export_rknn(config: RKNNConfig) -> None:
 
             # Export to ONNX using Optimum's main_export
             # Use batch_size and max_seq_length from config for input shapes
-            # Resolve task if auto
-            export_task = config.task
-            if export_task == "auto":
-                model_config = load_model_config(config.model_id_or_path)
-                export_task = detect_task(model_config)
-                # Update config with detected task so it's preserved
-                config.task = cast(SupportedTaskType, export_task)
-
             main_export(
                 model_name_or_path=config.model_id_or_path,
                 output=output_dir,
-                task=export_task,
+                task=config.task,  # onnx resolves "auto" internally
                 opset=config.opset,
                 do_validation=False,
                 no_post_process=True,
@@ -135,22 +135,25 @@ def export_rknn(config: RKNNConfig) -> None:
             )
 
             # main_export creates model.onnx in the output directory
-            exported_model_path = os.path.join(output_dir, "model.onnx")
-            logger.info(f"Successfully exported to {exported_model_path}")
-            # Update config to use the exported file
-            config.model_id_or_path = exported_model_path
+            onnx_model_path = os.path.join(output_dir, "model.onnx")
+            logger.info(f"Successfully exported to {onnx_model_path}")
+            # Use output_dir for config loading (contains config.json)
+            model_config_path = output_dir
 
         except Exception as e:
             raise RuntimeError(f"Failed to export model from Hub: {e}") from e
+    else:
+        # For local models, use the ONNX file directly
+        onnx_model_path = config.model_id_or_path
+        # For config loading, use the directory containing the ONNX file
+        model_config_path = os.path.dirname(os.path.abspath(config.model_id_or_path))
 
-    model_config = load_model_config(config.model_id_or_path)  # used for auto-detection
-
+    model_config = load_model_config(model_config_path)  # used for auto-detection
     # Auto-detect max_seq_length if not provided
     is_user_specified_seq_len = config.max_seq_length is not None
     if config.max_seq_length is None:
         config.max_seq_length = model_config.get("max_position_embeddings", DEFAULT_MAX_SEQ_LENGTH)
         logger.info(f"Auto-detected max_seq_length: {config.max_seq_length}")
-
     # Auto-detect type_vocab_size if not provided
     if config.type_vocab_size is None:
         config.type_vocab_size = model_config.get("type_vocab_size")
@@ -161,7 +164,22 @@ def export_rknn(config: RKNNConfig) -> None:
     logger.info(f"Configuring RKNN for {config.target_platform}")
     rknn.config(**config.to_dict())
 
-    logger.info(f"Loading ONNX model: {config.model_id_or_path}")
+    # Custom op registration must happen after config() but before load_onnx()
+    if config.enable_custom_kernels:
+        logger.info("Registering custom kernels")
+        for kernel in ALL_KERNELS:
+            ret = rknn.reg_custom_op(kernel())
+            if ret != 0:
+                raise RuntimeError(f"Register custom op failed: {kernel.__name__}")
+
+        # Patch the ONNX model to use the custom op type
+        # This is necessary because RKNN does not allow overriding standard ops like CumSum
+        # via reg_custom_op unless they have a custom op_type (e.g. cstCumSum).
+        logger.warning("Patching ONNX model to use custom ops where applicable")
+        onnx_model_path = replace_onnx_op(onnx_model_path, "CumSum", "cstCumSum")
+        logger.warning(f"Patched ONNX model path: {onnx_model_path}")
+
+    logger.info(f"Loading ONNX model: {onnx_model_path}")
     sequence_length = config.max_seq_length
     batch_size = config.batch_size
     assert sequence_length is not None
@@ -172,7 +190,7 @@ def export_rknn(config: RKNNConfig) -> None:
         inputs = config.model_input_names
         logger.info(f"Using user-specified inputs: {inputs}")
     else:
-        inputs = get_onnx_input_names(config.model_id_or_path)
+        inputs = get_onnx_input_names(onnx_model_path)
         if inputs is None:
             # Fallback to heuristic based on type_vocab_size if ONNX inspection fails
             logger.warning("Failed to extract inputs from ONNX model, falling back to heuristic")
@@ -191,7 +209,7 @@ def export_rknn(config: RKNNConfig) -> None:
 
     logger.info(f"Loading ONNX model into RKNN with inputs: {inputs} and sizes: {input_size_list}")
     ret = rknn.load_onnx(
-        model=config.model_id_or_path,
+        model=onnx_model_path,
         inputs=inputs,
         input_size_list=input_size_list,
     )
@@ -203,7 +221,7 @@ def export_rknn(config: RKNNConfig) -> None:
     actual_splits = None
 
     if config.quantization.do_quantization and config.quantization.dataset_name:
-        model_dir = os.path.dirname(config.model_id_or_path)
+        model_dir = os.path.dirname(onnx_model_path)
 
         dataset_file, actual_columns, actual_splits = prepare_dataset_for_quantization(
             config.quantization.dataset_name,
@@ -234,11 +252,11 @@ def export_rknn(config: RKNNConfig) -> None:
             model_name = os.path.splitext(os.path.basename(config.output_path))[0]
         else:
             model_dir = config.output_path
-            model_name = os.path.splitext(os.path.basename(config.model_id_or_path.rstrip(os.sep)))[0]
+            model_name = os.path.splitext(os.path.basename(onnx_model_path.rstrip(os.sep)))[0]
     else:
         if is_local_model:
-            model_dir = os.path.dirname(os.path.abspath(config.model_id_or_path))
-            model_name = os.path.splitext(os.path.basename(config.model_id_or_path))[0]
+            model_dir = os.path.dirname(os.path.abspath(onnx_model_path))
+            model_name = os.path.splitext(os.path.basename(onnx_model_path))[0]
         else:
             model_dir = os.getcwd()
             model_name = "model"
@@ -286,9 +304,14 @@ def export_rknn(config: RKNNConfig) -> None:
 
         # Upload files
         try:
-            # Upload the entire output directory, excluding original weights
-            # We want to keep tokenizer, config, etc., plus the new RKNN model and rknn.json
             logger.info(f"Uploading directory {model_dir} to Hub...")
+            # Match sentence-transformers module directories like 1_Pooling/*, 2_Dense/*, etc.
+            upload_allow_patterns = ALLOW_MODEL_REPO_FILES.copy()
+            upload_allow_patterns.extend(
+                [
+                    "[0-9]_*/**",  # Match module directories and all their contents
+                ]
+            )
 
             api.upload_folder(
                 repo_id=config.hub_model_id,
@@ -296,7 +319,7 @@ def export_rknn(config: RKNNConfig) -> None:
                 token=config.hub_token,
                 repo_type="model",
                 ignore_patterns=IGNORE_MODEL_REPO_FILES,
-                allow_patterns=ALLOW_MODEL_REPO_FILES,
+                allow_patterns=upload_allow_patterns,
                 create_pr=config.hub_create_pr,
             )
 
@@ -304,11 +327,10 @@ def export_rknn(config: RKNNConfig) -> None:
         except Exception as e:
             logger.warning(f"Error uploading to Hub: {e}")
         finally:
-            # Cleanup dataset file
+            # Cleanup dataset file and temp directory
             if dataset_file and os.path.exists(dataset_file):
                 with contextlib.suppress(Exception):
                     os.remove(dataset_file)
-                    # Also try to remove the temp directory
                     temp_dir = os.path.dirname(dataset_file)
                     if os.path.exists(temp_dir):
                         shutil.rmtree(temp_dir)

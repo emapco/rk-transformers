@@ -23,7 +23,7 @@ from rktransformers.utils.env_utils import (
     get_edge_host_platform,
     get_librknnrt_version,
     get_rknn_toolkit_version,
-    get_rknpu_driver_version,
+    get_rktransformers_version,
     get_rockchip_board,
 )
 
@@ -46,13 +46,13 @@ class RKNNEnvCommand(BaseRKNNCLICommand):
             "Operating system": platform.platform(),
             "Rockchip Board": get_rockchip_board(),
             "Rockchip SoC": get_edge_host_platform() or "Not Detected",
-            "RKNPU2 Driver version": get_rknpu_driver_version(),
             "RKNN Runtime version": get_librknnrt_version(),
             "RKNN Toolkit version": get_rknn_toolkit_version(),
             "Python version": platform.python_version(),
             "PyTorch version": pt_version,
             "HuggingFace transformers version": transformers_version,
             "HuggingFace optimum version": optimum_version,
+            "rk-transformers version": get_rktransformers_version(),
         }
 
         print("\nCopy-and-paste the text below in your GitHub issue:\n")

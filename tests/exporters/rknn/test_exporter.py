@@ -43,8 +43,31 @@ pytestmark = pytest.mark.skipif(
 
 from rktransformers.exporters.rknn.convert import (  # noqa: E402
     export_rknn,
+    load_model_config,
     prepare_dataset_for_quantization,
 )
+
+
+class TestLoadModelConfig:
+    """Tests for loading model configuration."""
+
+    @patch("rktransformers.exporters.rknn.utils.AutoConfig")
+    def test_load_model_config_auto_config(self, mock_auto_config: MagicMock) -> None:
+        mock_config_instance = MagicMock()
+        mock_config_instance.to_dict.return_value = {"architectures": ["BertForSequenceClassification"]}
+        mock_auto_config.from_pretrained.return_value = mock_config_instance
+
+        config = load_model_config("dummy-model-id")
+        assert config == {"architectures": ["BertForSequenceClassification"]}
+        mock_auto_config.from_pretrained.assert_called_with("dummy-model-id", trust_remote_code=True)
+
+    @patch("rktransformers.exporters.rknn.utils.AutoConfig")
+    def test_load_model_config_failure(self, mock_auto_config: MagicMock) -> None:
+        mock_auto_config.from_pretrained.side_effect = Exception("Failed to load")
+
+        # Should return empty dict on failure
+        config = load_model_config("non-existent-model")
+        assert config == {}
 
 
 class TestRKNNExporter:
@@ -139,13 +162,17 @@ class TestRKNNExporter:
         mock_create_repo.assert_called_once()
 
         expected_folder = str(temp_dir)
+        # Expected allow patterns include ALLOW_MODEL_REPO_FILES + module directories
+        expected_allow_patterns = ALLOW_MODEL_REPO_FILES.copy()
+        expected_allow_patterns.extend(["[0-9]_*/**"])
+
         mock_api_instance.upload_folder.assert_called_once_with(
             repo_id="test/model",
             folder_path=expected_folder,
             token="fake_token",
             repo_type="model",
             ignore_patterns=IGNORE_MODEL_REPO_FILES,
-            allow_patterns=ALLOW_MODEL_REPO_FILES,
+            allow_patterns=expected_allow_patterns,
             create_pr=False,
         )
 
@@ -203,7 +230,7 @@ class TestRKNNExporter:
         mock_main_export.assert_called_once_with(
             model_name_or_path="test/hub-model",
             output=expected_output_dir,
-            task="feature-extraction",
+            task="auto",
             opset=DEFAULT_OPSET,
             do_validation=False,
             no_post_process=True,

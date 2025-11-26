@@ -23,7 +23,6 @@ from rktransformers.utils.env_utils import (
     get_edge_host_platform,
     get_librknnrt_version,
     get_rknn_toolkit_version,
-    get_rknpu_driver_version,
     get_rockchip_board,
     is_rockchip_platform,
 )
@@ -74,16 +73,6 @@ class TestEnvUtils:
         """Test failure handling for librknnrt version."""
         with patch("subprocess.check_output", side_effect=Exception):
             assert get_librknnrt_version() == "Not Detected"
-
-    def test_get_rknpu_driver_version_success(self) -> None:
-        """Test successful retrieval of RKNPU driver version."""
-        with patch("builtins.open", mock_open(read_data="driver version: 0.9.0")):
-            assert get_rknpu_driver_version() == "0.9.0"
-
-    def test_get_rknpu_driver_version_failure(self) -> None:
-        """Test failure handling for RKNPU driver version."""
-        with patch("builtins.open", side_effect=Exception):
-            assert get_rknpu_driver_version() == "Not Detected"
 
     @pytest.mark.parametrize(
         "path_exists,file_content,expected",

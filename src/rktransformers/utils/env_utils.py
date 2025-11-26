@@ -41,15 +41,6 @@ def get_librknnrt_version() -> str:
     return "Not Detected"
 
 
-def get_rknpu_driver_version() -> str:
-    """Read RKNPU2 driver version"""
-    try:
-        with open("/sys/kernel/debug/rknpu/version") as f:
-            return f.read().strip().split(":")[-1].strip()
-    except Exception:
-        return "Not Detected"
-
-
 def get_rockchip_board():
     """Read Rockchip board name from device tree.
 

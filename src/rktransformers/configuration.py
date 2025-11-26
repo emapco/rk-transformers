@@ -19,6 +19,7 @@ from rktransformers.constants import (
     DEFAULT_BATCH_SIZE,
     DEFAULT_MAX_SEQ_LENGTH,
     DEFAULT_OPSET,
+    OpsetType,
     OptimizationLevelType,
     PlatformType,
     QuantizedAlgorithmType,
@@ -26,6 +27,7 @@ from rktransformers.constants import (
     QuantizedMethodType,
     SupportedTaskType,
 )
+from rktransformers.utils.env_utils import get_rktransformers_version
 
 
 @dataclass
@@ -218,9 +220,11 @@ class RKNNConfig:
         hub_private_repo: Create a private repository on HuggingFace Hub.
 
         # Optimum Export Settings
-        opset: ONNX opset version (default: None, uses Optimum default or 18).
+        opset: ONNX opset version. Minimum: 14 (required for SDPA). Maximum: 19. (maximum supported by RKNN). (default: 18).
         task: Task type for export (default: "auto").
-            Auto-detected: Uses model config.json `architectures` to determine task.
+            - 'auto': Uses optimum to detect the task based on model architecture.
+                - Can be used to export models supported by optimum and not rk-transformers runtime functionality,
+                  in which case, the user is responsible for developing inference code using rknn-toolkit-lite2 library or subclassing `rktransformers.RKRTModel`.
             - *ForSequenceClassification -> sequence-classification
             - *ForMaskedLM -> fill-mask
             - Fallback: feature-extraction (e.g. BertModel)
@@ -257,13 +261,17 @@ class RKNNConfig:
     hub_private_repo: bool = False
     hub_create_pr: bool = False
 
+    # Custom kernels
+    enable_custom_kernels: bool = False
+
     # Optimum export settings
-    opset: int | None = DEFAULT_OPSET
+    opset: OpsetType | None = DEFAULT_OPSET
     task: SupportedTaskType = "auto"
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Convert config to dictionary for RKNN.config()
+        Convert config to dictionary for RKNN.config().
+        This includes only parameters relevant to RKNN.config() otherwise RKNN will raise errors.
         """
         config_dict = {
             "target_platform": self.target_platform,
@@ -308,6 +316,9 @@ class RKNNConfig:
             # Platform configuration
             "target_platform": self.target_platform,
             "single_core_mode": self.single_core_mode,
+            # rktransformers configuration
+            "rktransformers_version": get_rktransformers_version(),
+            "enable_custom_kernels": self.enable_custom_kernels,
             # Other RKNN parameters
             "mean_values": self.mean_values,
             "std_values": self.std_values,

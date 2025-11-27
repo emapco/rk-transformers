@@ -17,11 +17,11 @@ import logging
 import os
 
 from huggingface_hub import ModelCard, ModelCardData
+from sentence_transformers.util.file_io import is_sentence_transformer_model
 
 from rktransformers.configuration import RKNNConfig
 from rktransformers.exporters.rknn.utils import get_file_size_str, get_rk_model_class
 from rktransformers.utils.env_utils import get_rknn_toolkit_version, get_rktransformers_version
-from rktransformers.utils.modeling_utils import check_sentence_transformer_support
 
 logger = logging.getLogger(__name__)
 
@@ -122,24 +122,24 @@ class ModelCardGenerator:
             config: RKNN configuration.
 
         Returns:
-            Model name extracted from model_id_or_path.
+            Model name extracted from model_name_or_path.
         """
-        assert config.model_id_or_path is not None, (
-            "model_id_or_path should be set in RKNNConfig before generating the model card"
+        assert config.model_name_or_path is not None, (
+            "model_name_or_path should be set in RKNNConfig before generating the model card"
         )
-        if os.path.exists(config.model_id_or_path):
+        if os.path.exists(config.model_name_or_path):
             # Local file/directory
-            abs_path = os.path.abspath(config.model_id_or_path)
+            abs_path = os.path.abspath(config.model_name_or_path)
             if os.path.isfile(abs_path):
                 return os.path.basename(os.path.dirname(abs_path))
             else:
                 return os.path.basename(abs_path)
         else:
             # Hub ID
-            if "/" in config.model_id_or_path:
-                return config.model_id_or_path.split("/")[-1]
+            if "/" in config.model_name_or_path:
+                return config.model_name_or_path.split("/")[-1]
             else:
-                return config.model_id_or_path
+                return config.model_name_or_path
 
     def _resolve_base_model_info(self, config: RKNNConfig, base_model_id: str | None) -> tuple[str, str]:
         """
@@ -152,10 +152,10 @@ class ModelCardGenerator:
         Returns:
             Tuple of (base_model, base_model_url).
         """
-        assert config.model_id_or_path is not None, (
-            "model_id_or_path should be set in RKNNConfig before generating the model card"
+        assert config.model_name_or_path is not None, (
+            "model_name_or_path should be set in RKNNConfig before generating the model card"
         )
-        base_model = base_model_id if base_model_id else config.model_id_or_path
+        base_model = base_model_id if base_model_id else config.model_name_or_path
 
         if os.path.exists(base_model):
             # Local file/directory
@@ -257,9 +257,10 @@ class ModelCardGenerator:
                 details_part = split_marker + parts[1]
                 new_content = (
                     f"{header_part}\n\n"
-                    f"<details><summary>Click to see the RKNN model details and usage examples</summary>\n\n"
+                    "<details><summary>Click to see the RKNN model details and usage examples</summary>\n\n"
                     f"{details_part}\n\n"
-                    f"</details>\n"
+                    "</details>\n\n"
+                    "---\n"
                     f"{existing_card.text}"
                 )
 
@@ -298,10 +299,10 @@ class ModelCardGenerator:
         except Exception:
             rknn_version = "Unknown"
 
-        assert config.model_id_or_path is not None, (
-            "model_id_or_path should be set in RKNNConfig before generating the model card"
+        assert config.model_name_or_path is not None, (
+            "model_name_or_path should be set in RKNNConfig before generating the model card"
         )
-        assert config.model_id_or_path is not None, (
+        assert config.model_name_or_path is not None, (
             "output_path should be set in RKNNConfig before generating the model card"
         )
 
@@ -312,7 +313,9 @@ class ModelCardGenerator:
         if config.quantization.dataset_name:
             datasets.append(config.quantization.dataset_name)
 
-        is_sentence_transformer = check_sentence_transformer_support(output_dir, config.model_id_or_path)
+        is_sentence_transformer = is_sentence_transformer_model(
+            model_name_or_path=config.model_name_or_path, cache_folder=output_dir
+        )
 
         rk_model_class = get_rk_model_class(config.task)
 

@@ -1,11 +1,12 @@
 {
-    "model_b1_s32.rknn": {
+    "model_b1_s16.rknn": {
+        "rktransformers_version": "0.1.0",
         "model_input_names": [
             "input_ids",
             "attention_mask"
         ],
         "batch_size": 1,
-        "max_seq_length": 32,
+        "max_seq_length": 16,
         "float_dtype": "float16",
         "target_platform": "rk3588",
         "single_core_mode": false,
@@ -42,6 +43,7 @@
         }
     },
     "model_b2_s32.rknn": {
+        "rktransformers_version": "0.1.0",
         "model_input_names": [
             "input_ids",
             "attention_mask"
@@ -84,6 +86,7 @@
         }
     },
     "model_b4_s64.rknn": {
+        "rktransformers_version": "0.1.0",
         "model_input_names": [
             "input_ids",
             "attention_mask"
@@ -125,13 +128,14 @@
             "model_pruning": false
         }
     },
-    "model_b1_s16.rknn": {
+    "model_b1_s32.rknn": {
+        "rktransformers_version": "0.1.0",
         "model_input_names": [
             "input_ids",
             "attention_mask"
         ],
         "batch_size": 1,
-        "max_seq_length": 16,
+        "max_seq_length": 32,
         "float_dtype": "float16",
         "target_platform": "rk3588",
         "single_core_mode": false,

@@ -43,7 +43,6 @@ pip install rk-transformers
 from rktransformers import RKRTModelForFeatureExtraction
 from transformers import AutoTokenizer
 
-# Load tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained("random_bert")
 model = RKRTModelForFeatureExtraction.from_pretrained(
     "random_bert",
@@ -52,7 +51,6 @@ model = RKRTModelForFeatureExtraction.from_pretrained(
     file_name="rknn/model_b1_s32_o3.rknn"
 )
 
-# Tokenize and run inference
 inputs = tokenizer(
     ["Sample text for encoding"],
     padding="max_length",

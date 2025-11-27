@@ -1,5 +1,6 @@
 {
     "rknn/model_b1_s32_o3.rknn": {
+        "rktransformers_version": "0.1.0",
         "model_input_names": [
             "input_ids",
             "attention_mask",

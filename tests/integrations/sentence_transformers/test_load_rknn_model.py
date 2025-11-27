@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from transformers import PretrainedConfig
 
-from rktransformers.load import load_rknn_model
+from rktransformers.integrations.sentence_transformers import load_rknn_model
 
 
 class TestLoadRKNNModel:

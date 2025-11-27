@@ -42,6 +42,8 @@ IGNORE_MODEL_REPO_FILES = [
     ".gitattributes",
     "openvino/**",
     "onnx/**",
+    ".locks/**",
+    "models--*/**",
 ]
 ALLOW_MODEL_REPO_FILES = [
     "*.json",
@@ -50,7 +52,7 @@ ALLOW_MODEL_REPO_FILES = [
     "*.py",
     "*.yaml",
     "*.yml",
-    "*.rknn",  # Include RKNN model files
+    "*.rknn",
 ]
 
 PlatformType = Literal[
@@ -111,13 +113,9 @@ SupportedTaskType = Literal[
     "sequence-classification",
 ]
 SUPPORTED_TASK_CHOICES = get_args(SupportedTaskType)
-# Mapping from model architecture suffix to supported task
-# This is used for auto-detection of tasks
-ARCHITECTURE_SUFFIX_TO_TASK = {
-    "ForMaskedLM": "fill-mask",
-    "ForSequenceClassification": "sequence-classification",
-    "Model": "feature-extraction",
-}
+OpsetType = Literal[14, 15, 16, 17, 18, 19]  # ONNX opset 14 to 19 - sdpa added in 14 and rknn supports up to 19
+SUPPORTED_OPSETS = get_args(OpsetType)
+
 # Mapping from task to RKRTModel class name
 TASK_TO_RK_MODEL_CLASS = {
     "fill-mask": "RKRTModelForMaskedLM",

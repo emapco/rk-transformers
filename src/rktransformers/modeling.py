@@ -34,6 +34,7 @@ from transformers import (
     AutoModel,
     AutoModelForMaskedLM,
     AutoModelForSequenceClassification,
+    AutoTokenizer,
     PretrainedConfig,
 )
 from transformers.modeling_outputs import (
@@ -179,6 +180,19 @@ class RKRTModel(
             if hasattr(self.rknn_config, "max_seq_length") and self.rknn_config.max_seq_length is not None:
                 self.max_seq_length = self.rknn_config.max_seq_length
 
+            if hasattr(self.rknn_config, "batch_size"):
+                self.batch_size = self.rknn_config.batch_size
+
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+            self.pad_token_id = self.tokenizer.pad_token_id
+            self.pad_token_type_id = self.tokenizer.pad_token_type_id or 0
+        except Exception:
+            logger.warning("Failed to load tokenizer. Using default padding IDs (0).")
+            self.pad_token_id = 0
+            self.pad_token_type_id = 0
+        self.pad_attention_mask = 0  # Huggingface transformers uses 0 for padding attention mask
+
         self.rknn = self._load_rknn_model()
 
         # From optimum.onnxruntime.modeling.ORTModel
@@ -279,6 +293,8 @@ class RKRTModel(
             npu_core = core_mask_map.get(self.core_mask, RKNNLite.NPU_CORE_AUTO)
             with suppress_output():
                 ret = rknn.init_runtime(core_mask=npu_core)
+                if ret != 0:
+                    ret = rknn.init_runtime(target=self.platform, core_mask=npu_core)
         else:
             with suppress_output():
                 ret = rknn.init_runtime()
@@ -321,53 +337,80 @@ class RKRTModel(
             return torch.zeros_like(reference)
         return np.zeros_like(np.asarray(reference))
 
-    def _pad_to_max_length(
+    def _pad_to_model_input_dimensions(
         self,
         tensor: torch.Tensor | np.ndarray,
-        max_length: int,
+        padding_id: int,
         use_torch: bool,
     ) -> torch.Tensor | np.ndarray:
-        current_length = tensor.shape[1]
-        # Early exit if already at max length
-        if current_length >= max_length:
+        """Pad tensor to match model's expected input dimensions.
+
+        Pads the sequence length (dim=1) to self.max_seq_length and
+        batch size (dim=0) to self.batch_size if it's defined.
+
+        Args:
+            tensor: Input tensor to pad (shape: [batch, seq_len])
+            use_torch: Whether to use PyTorch or NumPy for padding
+
+        Returns:
+            Padded tensor with shape [batch_size, max_seq_length]
+        """
+        current_batch, current_length = tensor.shape[0], tensor.shape[1]
+
+        target_length = self.max_seq_length
+        target_batch = getattr(self, "batch_size", current_batch)
+
+        if current_batch >= target_batch and current_length >= target_length:
             return tensor
 
-        pad_width = max_length - current_length
+        length_pad = max(0, target_length - current_length)
+        batch_pad = max(0, target_batch - current_batch)
+
         if use_torch:
-            return torch.nn.functional.pad(tensor, (0, pad_width))  # type: ignore
-        return np.pad(tensor, ((0, 0), (0, pad_width)))  # type: ignore
+            # Pad sequence length (right), then batch size (bottom)
+            tensor = torch.nn.functional.pad(tensor, (0, length_pad, 0, batch_pad), value=padding_id)
+        else:
+            # NumPy padding: ((before_batch, after_batch), (before_seq, after_seq))
+            tensor = np.pad(tensor, ((0, batch_pad), (0, length_pad)), constant_values=padding_id)
+
+        return tensor
 
     def _prepare_text_inputs(
         self,
-        input_ids: torch.Tensor | np.ndarray | None,
+        input_ids: torch.Tensor | np.ndarray,
         attention_mask: torch.Tensor | np.ndarray | None,
         token_type_ids: torch.Tensor | np.ndarray | None,
-    ) -> tuple[bool, dict[str, torch.Tensor | np.ndarray | None]]:
-        tensors = [input_ids, attention_mask, token_type_ids]
-        first_tensor = next((tensor for tensor in tensors if tensor is not None), None)
-        if first_tensor is None:
-            raise ValueError("At least one tensor input must be provided to the RKRT model.")
-
-        use_torch = isinstance(first_tensor, torch.Tensor)
+    ) -> tuple[bool, dict[str, torch.Tensor | np.ndarray | None], int]:
         if input_ids is None:
             raise ValueError("`input_ids` is required for RKRT text inference.")
+
+        use_torch = isinstance(input_ids, torch.Tensor)
+        original_batch_size = input_ids.shape[0]
+        input_ids = self._pad_to_model_input_dimensions(input_ids, padding_id=self.pad_token_id, use_torch=use_torch)
+
         if attention_mask is None:
             attention_mask = self._ones_like(input_ids, use_torch)
-
-        input_ids = self._pad_to_max_length(input_ids, self.max_seq_length, use_torch)
-        attention_mask = self._pad_to_max_length(attention_mask, self.max_seq_length, use_torch)
+        attention_mask = self._pad_to_model_input_dimensions(
+            attention_mask, padding_id=self.pad_attention_mask, use_torch=use_torch
+        )
 
         if "token_type_ids" in self.input_names:
             if token_type_ids is None:
                 token_type_ids = self._zeros_like(input_ids, use_torch)  # Use padded input_ids as reference
             else:
-                token_type_ids = self._pad_to_max_length(token_type_ids, self.max_seq_length, use_torch)
+                token_type_ids = self._pad_to_model_input_dimensions(
+                    token_type_ids, padding_id=self.pad_token_type_id, use_torch=use_torch
+                )
 
-        return use_torch, {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "token_type_ids": token_type_ids,
-        }
+        return (
+            use_torch,
+            {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "token_type_ids": token_type_ids,
+            },
+            original_batch_size,
+        )
 
     def _run_text_model(
         self,
@@ -780,12 +823,12 @@ class RKRTModelForFeatureExtraction(RKRTModel):
         + FEATURE_EXTRACTION_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
             model_class="RKRTModelForFeatureExtraction",
-            checkpoint="eacortes/all-MiniLM-L6-v2",
+            checkpoint="rk-transformers/all-MiniLM-L6-v2",
         )
     )
     def forward(
         self,
-        input_ids: torch.Tensor | np.ndarray | None = None,
+        input_ids: torch.Tensor | np.ndarray,
         attention_mask: torch.Tensor | np.ndarray | None = None,
         token_type_ids: torch.Tensor | np.ndarray | None = None,
         *,
@@ -793,9 +836,11 @@ class RKRTModelForFeatureExtraction(RKRTModel):
         **kwargs: Any,
     ) -> BaseModelOutput | tuple[torch.Tensor | np.ndarray]:
         self._warn_on_unhandled_inputs(kwargs)
-        use_torch, model_inputs = self._prepare_text_inputs(input_ids, attention_mask, token_type_ids)
+        use_torch, model_inputs, original_batch_size = self._prepare_text_inputs(
+            input_ids, attention_mask, token_type_ids
+        )
         outputs = self._run_text_model(use_torch, model_inputs, ["last_hidden_state"])
-        last_hidden_state = outputs["last_hidden_state"]
+        last_hidden_state = outputs["last_hidden_state"][:original_batch_size]
         if not return_dict:
             return (last_hidden_state,)
         return BaseModelOutput(last_hidden_state=last_hidden_state)  # type: ignore[arg-type]
@@ -833,12 +878,12 @@ class RKRTModelForMaskedLM(RKRTModel):
         + MASKED_LM_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
             model_class="RKRTModelForMaskedLM",
-            checkpoint="eacortes/bert-base-uncased",
+            checkpoint="rk-transformers/bert-base-uncased",
         )
     )
     def forward(
         self,
-        input_ids: torch.Tensor | np.ndarray | None = None,
+        input_ids: torch.Tensor | np.ndarray,
         attention_mask: torch.Tensor | np.ndarray | None = None,
         token_type_ids: torch.Tensor | np.ndarray | None = None,
         *,
@@ -846,9 +891,11 @@ class RKRTModelForMaskedLM(RKRTModel):
         **kwargs: Any,
     ) -> MaskedLMOutput | tuple[torch.Tensor | np.ndarray]:
         self._warn_on_unhandled_inputs(kwargs)
-        use_torch, model_inputs = self._prepare_text_inputs(input_ids, attention_mask, token_type_ids)
+        use_torch, model_inputs, original_batch_size = self._prepare_text_inputs(
+            input_ids, attention_mask, token_type_ids
+        )
         outputs = self._run_text_model(use_torch, model_inputs, ["logits"])
-        logits = outputs["logits"]
+        logits = outputs["logits"][:original_batch_size]
         if not return_dict:
             return (logits,)
         return MaskedLMOutput(logits=logits)  # type: ignore[arg-type]
@@ -886,12 +933,12 @@ class RKRTModelForSequenceClassification(RKRTModel):
         + SEQUENCE_CLASSIFICATION_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
             model_class="RKRTModelForSequenceClassification",
-            checkpoint="eacortes/distilbert-base-uncased-finetuned-sst-2-english",
+            checkpoint="rk-transformers/distilbert-base-uncased-finetuned-sst-2-english",
         )
     )
     def forward(
         self,
-        input_ids: torch.Tensor | np.ndarray | None = None,
+        input_ids: torch.Tensor | np.ndarray,
         attention_mask: torch.Tensor | np.ndarray | None = None,
         token_type_ids: torch.Tensor | np.ndarray | None = None,
         *,
@@ -899,9 +946,11 @@ class RKRTModelForSequenceClassification(RKRTModel):
         **kwargs: Any,
     ) -> SequenceClassifierOutput | tuple[torch.Tensor | np.ndarray]:
         self._warn_on_unhandled_inputs(kwargs)
-        use_torch, model_inputs = self._prepare_text_inputs(input_ids, attention_mask, token_type_ids)
+        use_torch, model_inputs, original_batch_size = self._prepare_text_inputs(
+            input_ids, attention_mask, token_type_ids
+        )
         outputs = self._run_text_model(use_torch, model_inputs, ["logits"])
-        logits = outputs["logits"]
+        logits = outputs["logits"][:original_batch_size]
         if not return_dict:
             return (logits,)
         return SequenceClassifierOutput(logits=logits)  # type: ignore[arg-type]

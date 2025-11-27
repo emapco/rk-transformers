@@ -25,7 +25,6 @@ from transformers import AutoConfig, AutoTokenizer
 
 from rktransformers.configuration import RKNNConfig
 from rktransformers.constants import (
-    ARCHITECTURE_SUFFIX_TO_TASK,
     AUTO_DETECT_TEXT_FIELDS,
     DEFAULT_BATCH_SIZE,
     DEFAULT_MAX_SEQ_LENGTH,
@@ -33,6 +32,75 @@ from rktransformers.constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def download_sentence_transformer_modules_weights(
+    repo_id: str,
+    local_dir: str,
+    token: str | None = None,
+) -> bool:
+    """
+    Download sentence-transformers module subdirectories if modules.json exists.
+
+    Parses modules.json and downloads module subdirectories containing weights
+    (e.g., 1_Pooling, 2_Dense, 3_Dense). These subdirectories contain small
+    safetensor weights that are used by sentence-transformers for additional
+    model layers like pooling and dense transformations.
+
+    Args:
+        repo_id: Hugging Face repository ID (e.g., "sentence-transformers/all-MiniLM-L6-v2")
+        local_dir: Local directory where files should be downloaded
+        token: Optional Hugging Face API token for authentication
+
+    Returns:
+        True if modules were downloaded, False otherwise (e.g., no modules.json found)
+    """
+    from huggingface_hub import hf_hub_download, snapshot_download
+
+    modules_json_path = os.path.join(local_dir, "modules.json")
+    # If modules.json doesn't exist locally, try to download it first
+    if not os.path.exists(modules_json_path):
+        try:
+            hf_hub_download(
+                repo_id=repo_id,
+                filename="modules.json",
+                local_dir=local_dir,
+                token=token,
+            )
+        except Exception:
+            # modules.json doesn't exist in the repository, not a sentence-transformers model
+            return False
+
+    try:
+        with open(modules_json_path) as f:
+            modules = json.load(f)
+    except Exception as e:
+        logger.warning(f"Failed to parse modules.json: {e}")
+        return False
+
+    # Download each module subdirectory - these contain small safetensor weights
+    downloaded_any = False
+    for module in modules:
+        module_path = module.get("path", "")
+
+        # Skip the root transformer (empty path) as it's handled by the main download
+        if not module_path:
+            continue
+
+        logger.info(f"Downloading sentence-transformers module: {module_path}")
+
+        try:
+            snapshot_download(
+                repo_id=repo_id,
+                local_dir=local_dir,
+                allow_patterns=f"{module_path}/**",
+                token=token,
+            )
+            downloaded_any = True
+        except Exception as e:
+            logger.warning(f"Failed to download module {module_path}: {e}")
+
+    return downloaded_any
 
 
 def prepare_dataset_for_quantization(
@@ -179,26 +247,26 @@ def prepare_dataset_for_quantization(
     return dataset_file_path, target_columns, splits_to_try
 
 
-def load_model_config(model_id_or_path: str) -> dict:
+def load_model_config(model_name_or_path: str) -> dict:
     """
     Load model configuration from config.json or Hugging Face Hub.
 
     Args:
-        model_id_or_path: Path to the ONNX model file or Hub ID
+        model_name_or_path: Path to the ONNX model file or Hub ID
 
     Returns:
         Dictionary containing model configuration or empty dict if not found.
     """
     try:
         # Use AutoConfig to load configuration (handles both local and Hub)
-        config = AutoConfig.from_pretrained(model_id_or_path, trust_remote_code=True)
+        config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
         return config.to_dict()
     except Exception as e:
-        logger.warning(f"Failed to load config for {model_id_or_path}: {e}")
+        logger.warning(f"Failed to load config for {model_name_or_path}: {e}")
 
         # Fallback for local directory if AutoConfig fails
-        if os.path.isdir(model_id_or_path):
-            config_path = os.path.join(model_id_or_path, "config.json")
+        if os.path.isdir(model_name_or_path):
+            config_path = os.path.join(model_name_or_path, "config.json")
             if os.path.exists(config_path):
                 try:
                     with open(config_path) as f:
@@ -314,34 +382,6 @@ def store_rknn_json(
         logger.info(f"Exported configuration to {rknn_json_path}")
     except Exception as e:
         logger.warning(f"Failed to write rknn.json: {e}")
-
-
-def detect_task(model_config: dict) -> str:
-    """
-    Detect the appropriate task based on the model configuration.
-
-    Args:
-        model_config: Model configuration dictionary
-
-    Returns:
-        Detected task string (e.g., "sequence-classification", "feature-extraction")
-    """
-    architectures = model_config.get("architectures", [])
-    if not architectures:
-        logger.warning("No architectures found in config, defaulting to feature-extraction")
-        return "feature-extraction"
-
-    # Check the first architecture
-    arch = architectures[0]
-
-    # Check against known suffixes
-    for suffix, task in ARCHITECTURE_SUFFIX_TO_TASK.items():
-        if arch.endswith(suffix):
-            logger.info(f"Detected task '{task}' from architecture '{arch}'")
-            return task
-
-    logger.warning(f"Could not map architecture '{arch}' to a specific task, defaulting to feature-extraction")
-    return "feature-extraction"
 
 
 def get_onnx_input_names(model_path: str) -> list[str] | None:

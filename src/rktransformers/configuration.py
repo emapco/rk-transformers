@@ -19,6 +19,7 @@ from rktransformers.constants import (
     DEFAULT_BATCH_SIZE,
     DEFAULT_MAX_SEQ_LENGTH,
     DEFAULT_OPSET,
+    OpsetType,
     OptimizationLevelType,
     PlatformType,
     QuantizedAlgorithmType,
@@ -26,6 +27,7 @@ from rktransformers.constants import (
     QuantizedMethodType,
     SupportedTaskType,
 )
+from rktransformers.utils.env_utils import get_rktransformers_version
 
 
 @dataclass
@@ -207,7 +209,7 @@ class RKNNConfig:
             ```
 
         # Export Settings
-        model_id_or_path: Path to input ONNX model file or Hugging Face model ID.
+        model_name_or_path: Path to input ONNX model file or Hugging Face model ID.
         output_path: Path for output RKNN model file or directory.
             Optional. Defaults to the model's parent directory (for local files) or current directory (for Hub models).
         push_to_hub: Upload the exported model to HuggingFace Hub.
@@ -218,9 +220,11 @@ class RKNNConfig:
         hub_private_repo: Create a private repository on HuggingFace Hub.
 
         # Optimum Export Settings
-        opset: ONNX opset version (default: None, uses Optimum default or 18).
+        opset: ONNX opset version. Minimum: 14 (required for SDPA). Maximum: 19. (maximum supported by RKNN). (default: 18).
         task: Task type for export (default: "auto").
-            Auto-detected: Uses model config.json `architectures` to determine task.
+            - 'auto': Uses optimum to detect the task based on model architecture.
+                - Can be used to export models supported by optimum and not rk-transformers runtime functionality,
+                  in which case, the user is responsible for developing inference code using rknn-toolkit-lite2 library or subclassing `rktransformers.RKRTModel`.
             - *ForSequenceClassification -> sequence-classification
             - *ForMaskedLM -> fill-mask
             - Fallback: feature-extraction (e.g. BertModel)
@@ -249,7 +253,7 @@ class RKNNConfig:
     op_target: dict[str, str] | None = None
 
     # Export settings
-    model_id_or_path: str | None = None
+    model_name_or_path: str | None = None
     output_path: str | None = None
     push_to_hub: bool = False
     hub_model_id: str | None = None
@@ -258,12 +262,13 @@ class RKNNConfig:
     hub_create_pr: bool = False
 
     # Optimum export settings
-    opset: int | None = DEFAULT_OPSET
+    opset: OpsetType | None = DEFAULT_OPSET
     task: SupportedTaskType = "auto"
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Convert config to dictionary for RKNN.config()
+        Convert config to dictionary for RKNN.config().
+        This includes only parameters relevant to RKNN.config() otherwise RKNN will raise errors.
         """
         config_dict = {
             "target_platform": self.target_platform,
@@ -300,6 +305,8 @@ class RKNNConfig:
         This includes ALL configuration parameters for reproducibility.
         """
         export_dict = {
+            # rktransformers configuration
+            "rktransformers_version": get_rktransformers_version(),
             # Model configuration
             "model_input_names": self.model_input_names,
             "batch_size": self.batch_size,

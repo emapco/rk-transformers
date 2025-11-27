@@ -43,8 +43,31 @@ pytestmark = pytest.mark.skipif(
 
 from rktransformers.exporters.rknn.convert import (  # noqa: E402
     export_rknn,
+    load_model_config,
     prepare_dataset_for_quantization,
 )
+
+
+class TestLoadModelConfig:
+    """Tests for loading model configuration."""
+
+    @patch("rktransformers.exporters.rknn.utils.AutoConfig")
+    def test_load_model_config_auto_config(self, mock_auto_config: MagicMock) -> None:
+        mock_config_instance = MagicMock()
+        mock_config_instance.to_dict.return_value = {"architectures": ["BertForSequenceClassification"]}
+        mock_auto_config.from_pretrained.return_value = mock_config_instance
+
+        config = load_model_config("dummy-model-id")
+        assert config == {"architectures": ["BertForSequenceClassification"]}
+        mock_auto_config.from_pretrained.assert_called_with("dummy-model-id", trust_remote_code=True)
+
+    @patch("rktransformers.exporters.rknn.utils.AutoConfig")
+    def test_load_model_config_failure(self, mock_auto_config: MagicMock) -> None:
+        mock_auto_config.from_pretrained.side_effect = Exception("Failed to load")
+
+        # Should return empty dict on failure
+        config = load_model_config("non-existent-model")
+        assert config == {}
 
 
 class TestRKNNExporter:
@@ -60,7 +83,7 @@ class TestRKNNExporter:
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path=str(dummy_onnx_file),
+            model_name_or_path=str(dummy_onnx_file),
         )
 
         export_rknn(config)
@@ -95,7 +118,7 @@ class TestRKNNExporter:
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="test/model.onnx",
+            model_name_or_path="test/model.onnx",
             output_path=str(temp_dir),
             quantization=QuantizationConfig(do_quantization=True, dataset_name="test_dataset"),
         )
@@ -127,7 +150,7 @@ class TestRKNNExporter:
         mock_api_instance = mock_hf_api.return_value
 
         config = RKNNConfig(
-            model_id_or_path="test/model.onnx",
+            model_name_or_path="test/model.onnx",
             target_platform="rk3588",
             output_path=str(temp_dir),
             push_to_hub=True,
@@ -139,13 +162,17 @@ class TestRKNNExporter:
         mock_create_repo.assert_called_once()
 
         expected_folder = str(temp_dir)
+        # Expected allow patterns include ALLOW_MODEL_REPO_FILES + module directories
+        expected_allow_patterns = ALLOW_MODEL_REPO_FILES.copy()
+        expected_allow_patterns.extend(["[0-9]_*/**"])
+
         mock_api_instance.upload_folder.assert_called_once_with(
             repo_id="test/model",
             folder_path=expected_folder,
             token="fake_token",
             repo_type="model",
             ignore_patterns=IGNORE_MODEL_REPO_FILES,
-            allow_patterns=ALLOW_MODEL_REPO_FILES,
+            allow_patterns=expected_allow_patterns,
             create_pr=False,
         )
 
@@ -175,7 +202,7 @@ class TestRKNNExporter:
         expected_output_dir = str(temp_dir / "hub-model")
 
         # Mock file existence checks
-        # 1. check if model_id_or_path exists (False for Hub ID)
+        # 1. check if model_name_or_path exists (False for Hub ID)
         # 2. check if exported model.onnx exists (True)
         def side_effect(path):
             if path == "test/hub-model":
@@ -189,7 +216,7 @@ class TestRKNNExporter:
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="test/hub-model",
+            model_name_or_path="test/hub-model",
             output_path=str(initial_output_path),
             batch_size=1,
             max_seq_length=128,  # Non-default, should appear in filename
@@ -203,7 +230,7 @@ class TestRKNNExporter:
         mock_main_export.assert_called_once_with(
             model_name_or_path="test/hub-model",
             output=expected_output_dir,
-            task="feature-extraction",
+            task="auto",
             opset=DEFAULT_OPSET,
             do_validation=False,
             no_post_process=True,
@@ -247,7 +274,7 @@ class TestRKNNExporter:
         output_path = temp_dir / f"model_{platform}.rknn"
         config = RKNNConfig(
             target_platform=cast(PlatformType, platform),
-            model_id_or_path="test/model.onnx",
+            model_name_or_path="test/model.onnx",
             output_path=str(output_path),
             optimization=OptimizationConfig(optimization_level=cast(OptimizationLevelType, optimization_level)),
         )
@@ -289,7 +316,7 @@ class TestRKNNExporter:
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="test/model.onnx",
+            model_name_or_path="test/model.onnx",
             output_path=str(output_path),
             batch_size=1,
             max_seq_length=32,
@@ -327,7 +354,7 @@ class TestRKNNExporter:
         output_path = temp_dir / "model.rknn"
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="test/model.onnx",
+            model_name_or_path="test/model.onnx",
             output_path=str(output_path),
             batch_size=DEFAULT_BATCH_SIZE,  # 1
             max_seq_length=DEFAULT_MAX_SEQ_LENGTH,
@@ -354,7 +381,7 @@ class TestRKNNExporter:
         output_path = temp_dir / "model.rknn"
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="test/model.onnx",
+            model_name_or_path="test/model.onnx",
             output_path=str(output_path),
             batch_size=4,  # Non-default
             max_seq_length=DEFAULT_MAX_SEQ_LENGTH,
@@ -396,7 +423,7 @@ class TestRKNNExporter:
         output_path = temp_dir / "model.rknn"
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="test/hub-model",
+            model_name_or_path="test/hub-model",
             output_path=str(output_path),
             opset=18,
             task="fill-mask",
@@ -593,7 +620,7 @@ class TestExportIntegration:
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path=str(onnx_model_path),
+            model_name_or_path=str(onnx_model_path),
             max_seq_length=32,
             optimization=OptimizationConfig(optimization_level=3),
         )
@@ -616,7 +643,7 @@ class TestExportIntegration:
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path=str(onnx_model_path),
+            model_name_or_path=str(onnx_model_path),
             max_seq_length=max_seq_length,
             batch_size=batch_size,
         )
@@ -638,7 +665,7 @@ class TestExportIntegration:
         """
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="sentence-transformers/all-MiniLM-L6-v2",
+            model_name_or_path="sentence-transformers/all-MiniLM-L6-v2",
             output_path=str(test_data_dir),
             max_seq_length=128,
             batch_size=1,
@@ -671,7 +698,7 @@ class TestExportIntegration:
         """Test export workflow with ModernBERT from Hub."""
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="answerdotai/ModernBERT-base",
+            model_name_or_path="answerdotai/ModernBERT-base",
             output_path=str(test_data_dir),
             max_seq_length=128,
             batch_size=1,

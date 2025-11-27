@@ -257,9 +257,10 @@ class ModelCardGenerator:
                 details_part = split_marker + parts[1]
                 new_content = (
                     f"{header_part}\n\n"
-                    f"<details><summary>Click to see the RKNN model details and usage examples</summary>\n\n"
+                    "<details><summary>Click to see the RKNN model details and usage examples</summary>\n\n"
                     f"{details_part}\n\n"
-                    f"</details>\n"
+                    "</details>\n\n"
+                    "---\n"
                     f"{existing_card.text}"
                 )
 

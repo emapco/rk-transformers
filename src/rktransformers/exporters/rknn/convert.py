@@ -162,6 +162,10 @@ def export_rknn(config: RKNNConfig) -> None:
     logger.info(f"Configuring RKNN for {config.target_platform}")
     rknn.config(**config.to_dict())
 
+    # register custom operators inbetween rknn.config() and rknn.load_onnx()
+    # rknn.register_custom_op()
+    # Docs: 5.5 Custom Operators https://github.com/airockchip/rknn-toolkit2/blob/master/doc/02_Rockchip_RKNPU_User_Guide_RKNN_SDK_V2.3.2_EN.pdf
+
     logger.info(f"Loading ONNX model: {onnx_model_path}")
     sequence_length = config.max_seq_length
     batch_size = config.batch_size

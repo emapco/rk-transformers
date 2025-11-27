@@ -16,11 +16,11 @@ import json
 from typing import Any, Literal
 
 import numpy as np
+from sentence_transformers import CrossEncoder, SentenceTransformer
+from sentence_transformers.models import Pooling, Transformer
 from sentence_transformers.util.file_io import is_sentence_transformer_model
 from transformers.configuration_utils import PretrainedConfig
 from transformers.utils import logging
-
-from .utils.import_utils import is_sentence_transformers_available
 
 logger = logging.get_logger(__name__)
 
@@ -128,58 +128,16 @@ def _load_rknn_config(model_name_or_path: str, config: PretrainedConfig, **model
     return rknn_config, config, model_kwargs
 
 
-def patch_cross_encoder():
+class RKCrossEncoder(CrossEncoder):
     """
-    Patch the CrossEncoder class to support the RKNN backend.
+    RKNN-compatible CrossEncoder implementation.
 
-    1. Patch CrossEncoder._load_model to handle backend="rknn" and load RKNN models.
-    2. Patch CrossEncoder.predict to ensure padding="max_length" for RKNN models.
+    This class extends SentenceTransformers' CrossEncoder to support the RKNN backend.
+    It overrides model loading and prediction methods to handle RKNN-specific requirements
+    such as fixed input shapes and quantization.
     """
-    if not is_sentence_transformers_available():
-        raise ImportError(
-            "sentence-transformers is not available. Please install it via pip: pip install sentence-transformers"
-        )
 
-    from sentence_transformers import CrossEncoder
-
-    # Patch CrossEncoder._load_model
-    original_load_model = CrossEncoder._load_model
-
-    def _load_model_patched(
-        self,
-        model_name_or_path,
-        config,
-        backend,
-        **model_kwargs,
-    ):
-        """
-        Patched version of CrossEncoder._load_model to support RKNN backend.
-        """
-        if backend == "rknn":
-            rknn_config, config, model_kwargs = _load_rknn_config(model_name_or_path, config, **model_kwargs)
-            self._rknn_config = rknn_config
-
-            self.model = load_rknn_model(
-                model_name_or_path,
-                config=config,
-                task_name="sequence-classification",
-                **model_kwargs,
-            )
-        else:
-            original_load_model(
-                self,
-                model_name_or_path,
-                config,
-                backend,
-                **model_kwargs,
-            )
-
-    CrossEncoder._load_model = _load_model_patched
-
-    # Patch CrossEncoder.__init__ to apply tokenizer kwargs after initialization
-    original_init = CrossEncoder.__init__
-
-    def __init__patched(
+    def __init__(
         self,
         model_name_or_path: str,
         num_labels: int | None = None,
@@ -195,15 +153,10 @@ def patch_cross_encoder():
         tokenizer_kwargs: dict | None = None,
         config_kwargs: dict | None = None,
         model_card_data: Any | None = None,
-        backend: Literal["torch", "onnx", "openvino"] = "torch",
+        backend: Literal["torch", "onnx", "openvino", "rknn"] = "rknn",
     ) -> None:
         """
-        Patched version of CrossEncoder.__init__ to apply RKNN-specific tokenizer configurations.
-
-        This method overrides the original __init__ to configure tokenizer_kwargs BEFORE
-        the tokenizer is initialized. For RKNN models, it pre-loads the config and rknn.json
-        to determine the correct max_length and padding settings, then passes these via
-        tokenizer_kwargs so the tokenizer is created correctly from the start.
+        Initialize the RKCrossEncoder.
 
         Args:
             model_name_or_path (str): The model name on Hugging Face or the path to a local model directory.
@@ -220,14 +173,9 @@ def patch_cross_encoder():
             tokenizer_kwargs (dict, optional): Additional tokenizer loading arguments.
             config_kwargs (dict, optional): Additional config loading arguments.
             model_card_data (optional): Model card data.
-            backend (str): The backend to use for model loading (default: "torch").
-
-        Pre-processing:
-            - For RKNN backend, loads config and rknn.json to get max_position_embeddings
-            - Modifies tokenizer_kwargs to include padding="max_length" and model_max_length
+            backend (str): The backend to use for model loading (default: "rknn").
         """
-        original_init(
-            self,
+        super().__init__(
             model_name_or_path,
             num_labels,
             max_length,
@@ -245,20 +193,41 @@ def patch_cross_encoder():
             backend,
         )
 
-        if not hasattr(self, "_rknn_config"):
-            return
-
-        if hasattr(self, "tokenizer") and self.tokenizer is not None:
+        # Post-init configuration for RKNN
+        if hasattr(self, "_rknn_config") and hasattr(self, "tokenizer") and self.tokenizer is not None:
             self.tokenizer.padding = "max_length"
             self.tokenizer.pad_to_max_length = True
-            self.tokenizer.model_max_length = self.config.max_position_embeddings
+            if hasattr(self.config, "max_position_embeddings"):
+                self.tokenizer.model_max_length = self.config.max_position_embeddings
+            else:
+                self.tokenizer.model_max_length = self._rknn_config["max_seq_length"]
 
-    CrossEncoder.__init__ = __init__patched
+    def _load_model(
+        self,
+        model_name_or_path: str,
+        config: PretrainedConfig,
+        backend: str,
+        **model_kwargs,
+    ) -> None:
+        """
+        Load the model using the specified backend.
 
-    # Patch CrossEncoder.predict
-    original_predict = CrossEncoder.predict
+        Overrides CrossEncoder._load_model to support 'rknn' backend.
+        """
+        if backend == "rknn":
+            rknn_config, config, model_kwargs = _load_rknn_config(model_name_or_path, config, **model_kwargs)
+            self._rknn_config = rknn_config
 
-    def predict_patched(
+            self.model = load_rknn_model(
+                model_name_or_path,
+                config=config,
+                task_name="sequence-classification",
+                **model_kwargs,
+            )
+        else:
+            super()._load_model(model_name_or_path, config, backend, **model_kwargs)
+
+    def predict(
         self,
         sentences,
         batch_size=32,
@@ -269,11 +238,12 @@ def patch_cross_encoder():
         convert_to_tensor=False,
     ):
         """
-        Patched version of CrossEncoder.predict to enforce max_length padding for RKNN models.
+        Performs predictions with the CrossEncoder on the given sentence pairs.
+
+        Overrides CrossEncoder.predict to enforce max_length padding for RKNN models.
         """
         if not hasattr(self, "_rknn_config"):
-            return original_predict(
-                self,
+            return super().predict(
                 sentences,
                 batch_size,
                 show_progress_bar,
@@ -339,90 +309,17 @@ def patch_cross_encoder():
 
         return pred_scores
 
-    CrossEncoder.predict = predict_patched
-    logger.info("Patched CrossEncoder to support RKNN backend.")
 
-
-def patch_sentence_transformer():
+class RKTransformer(Transformer):
     """
-    Patch the SentenceTransformers library to support the RKNN backend.
+    RKNN-compatible Transformer implementation.
 
-    1. Patch Transformer._load_model to handle backend="rknn" and load RKNN models.
-    2. Patch Transformer.__init__ to set max_seq_length from rknn.json if available.
-    3. Patch Transformer.tokenize to ensure padding="max_length" for RKNN models.
-    4. Patch SentenceTransformer.encode to enforce RKNN model's batch size.
+    This class extends sentence_transformers.models.Transformer to support the RKNN backend.
+    It overrides model loading, initialization, and tokenization methods to handle RKNN-specific
+    requirements such as fixed input shapes and quantization.
     """
-    if not is_sentence_transformers_available():
-        raise ImportError(
-            "sentence-transformers is not available. Please install it via pip: pip install sentence-transformers"
-        )
 
-    from sentence_transformers.models import Transformer
-
-    # Patch Transformer._load_model
-    original_load_model = Transformer._load_model
-
-    def _load_model_patched(
-        self,
-        model_name_or_path,
-        config,
-        cache_dir,
-        backend,
-        is_peft_model,
-        **model_kwargs,
-    ):
-        """
-        Patched version of Transformer._load_model to support RKNN backend.
-
-        This method overrides the original _load_model to handle RKNN model loading when backend="rknn".
-        It loads the rknn.json configuration file to extract runtime parameters such as max_seq_length
-        and batch_size, and initializes the appropriate RKNN model via load_rknn_model.
-
-        Args:
-            model_name_or_path (str): The model name on Hugging Face or the path to a local model directory.
-            config (PretrainedConfig): The model configuration.
-            cache_dir (str, optional): Directory to cache the model files.
-            backend (str): The backend to use for model loading (e.g., "rknn", "pytorch", "onnx").
-            is_peft_model (bool): Whether the model is a PEFT (Parameter-Efficient Fine-Tuning) model.
-            **model_kwargs: Additional keyword arguments for model loading, such as:
-                - file_name (str, optional): Specific RKNN file to load.
-
-        Sets:
-            self._rknn_config (dict): The RKNN configuration loaded from rknn.json.
-            self._is_sentence_transformer (bool): Whether the model is a sentence-transformers model.
-            self.auto_model: The loaded RKNN model instance.
-        """
-        if backend == "rknn":
-            rknn_config, config, model_kwargs = _load_rknn_config(
-                model_name_or_path, config, **{**model_kwargs, "cache_dir": cache_dir}
-            )
-            self._rknn_config = rknn_config
-
-            self._is_sentence_transformer = is_sentence_transformer_model(model_name_or_path, cache_folder=cache_dir)
-
-            self.auto_model = load_rknn_model(
-                model_name_or_path,
-                config=config,
-                task_name="feature-extraction",
-                **model_kwargs,
-            )
-        else:
-            original_load_model(
-                self,
-                model_name_or_path,
-                config,
-                cache_dir,
-                backend,
-                is_peft_model,
-                **model_kwargs,
-            )
-
-    Transformer._load_model = _load_model_patched
-
-    # Patch Transformer.__init__ to apply max_seq_length after tokenizer is loaded
-    original_init = Transformer.__init__
-
-    def __init__patched(
+    def __init__(
         self,
         model_name_or_path: str,
         max_seq_length: int | None = None,
@@ -435,12 +332,7 @@ def patch_sentence_transformer():
         backend: str = "rknn",
     ) -> None:
         """
-        Patched version of Transformer.__init__ to apply RKNN-specific configurations.
-
-        This method overrides the original __init__ to apply max_seq_length and padding settings
-        from the RKNN configuration after the model and tokenizer have been loaded. For RKNN models,
-        it ensures the tokenizer uses max_length padding and sets the model_max_length to match
-        the model's max_position_embeddings.
+        Initialize the RKTransformer.
 
         Args:
             model_name_or_path (str): The model name on Hugging Face or the path to a local model directory.
@@ -453,13 +345,8 @@ def patch_sentence_transformer():
             do_lower_case (bool): Whether to lowercase the input text.
             tokenizer_name_or_path (str, optional): The tokenizer name or path to use.
             backend (str): The backend to use for model loading (default: "rknn").
-
-        Post-processing:
-            - Sets self.max_seq_length from the model's max_position_embeddings if available.
-            - Configures the tokenizer to use max_length padding if RKNN backend is detected.
         """
-        original_init(
-            self,
+        super().__init__(
             model_name_or_path,
             max_seq_length,
             model_args,
@@ -471,32 +358,70 @@ def patch_sentence_transformer():
             backend,
         )
 
-        if not hasattr(self, "_rknn_config"):
-            return
+        # Post-init configuration for RKNN
+        if hasattr(self, "_rknn_config"):
+            if self.auto_model and hasattr(self.auto_model, "config"):
+                self.max_seq_length = self.auto_model.config.max_position_embeddings
+            if hasattr(self, "tokenizer") and self.tokenizer is not None:
+                self.tokenizer.padding = "max_length"
+                self.tokenizer.pad_to_max_length = True
+                self.tokenizer.model_max_length = self.max_seq_length
 
-        if self.auto_model and hasattr(self.auto_model, "config"):
-            self.max_seq_length = self.auto_model.config.max_position_embeddings  # Set from RKNN config in _load_model
-        if hasattr(self, "tokenizer") and self.tokenizer is not None:
-            self.tokenizer.padding = "max_length"
-            self.tokenizer.pad_to_max_length = True
-            self.tokenizer.model_max_length = self.max_seq_length
+    def _load_model(
+        self,
+        model_name_or_path: str,
+        config,
+        cache_dir,
+        backend: str,
+        is_peft_model: bool,
+        **model_kwargs,
+    ) -> None:
+        """
+        Load the model using the specified backend.
 
-    Transformer.__init__ = __init__patched
+        Overrides Transformer._load_model to support 'rknn' backend.
 
-    # Patch Transformer.tokenize to force max_length padding for RKNN backend
-    original_tokenize = Transformer.tokenize
+        Args:
+            model_name_or_path (str): The model name on Hugging Face or the path to a local model directory.
+            config (PretrainedConfig): The model configuration.
+            cache_dir (str, optional): Directory to cache the model files.
+            backend (str): The backend to use for model loading (e.g., "rknn", "pytorch", "onnx").
+            is_peft_model (bool): Whether the model is a PEFT (Parameter-Efficient Fine-Tuning) model.
+            **model_kwargs: Additional keyword arguments for model loading, such as:
+                - file_name (str, optional): Specific RKNN file to load.
+        """
+        if backend == "rknn":
+            rknn_config, config, model_kwargs = _load_rknn_config(
+                model_name_or_path, config, **{**model_kwargs, "cache_dir": cache_dir}
+            )
+            self._rknn_config = rknn_config
+            self._is_sentence_transformer = is_sentence_transformer_model(model_name_or_path, cache_folder=cache_dir)
 
-    def tokenize_patched(
+            self.auto_model = load_rknn_model(
+                model_name_or_path,
+                config=config,
+                task_name="feature-extraction",
+                **model_kwargs,
+            )
+        else:
+            super()._load_model(
+                model_name_or_path,
+                config,
+                cache_dir,
+                backend,
+                is_peft_model,
+                **model_kwargs,
+            )
+
+    def tokenize(
         self,
         texts: list[str] | list[dict] | list[tuple[str, str]],
         padding: str | bool = True,
     ) -> dict[str, Any]:
         """
-        Patched version of Transformer.tokenize to enforce max_length padding for RKNN models.
+        Tokenize texts with RKNN-specific padding requirements.
 
-        This method overrides the original tokenize to ensure that RKNN models always receive
-        inputs padded to max_length, which is required for proper RKNN inference with fixed
-        input shapes.
+        Overrides Transformer.tokenize to enforce max_length padding for RKNN models.
 
         Args:
             texts (list): A list of texts to tokenize. Can be:
@@ -509,47 +434,133 @@ def patch_sentence_transformer():
         Returns:
             dict[str, Any]: A dictionary containing tokenized inputs with keys like 'input_ids',
                 'attention_mask', etc.
-
-        RKNN-specific behavior:
-            - If _rknn_config is present, padding is forced to "max_length".
-            - If _rknn_config is not present, falls back to the original tokenize behavior.
         """
-        if not hasattr(self, "_rknn_config"):
-            return original_tokenize(self, texts, padding)
+        if hasattr(self, "_rknn_config"):
+            padding = "max_length"
+        return super().tokenize(texts, padding)
 
-        # For RKNN backend, always use max_length padding and return numpy arrays
-        return original_tokenize(self, texts, padding="max_length")
 
-    Transformer.tokenize = tokenize_patched
+class RKSentenceTransformer(SentenceTransformer):
+    """
+    RKNN-compatible SentenceTransformer implementation.
 
-    # Patch SentenceTransformer.encode
-    from sentence_transformers import SentenceTransformer
+    This class extends SentenceTransformers' SentenceTransformer to support the RKNN backend.
+    It overrides the encode method to handle RKNN-specific batch size requirements.
+    """
 
-    original_encode = SentenceTransformer.encode
-
-    def encode_patched(self, sentences: str | list[str], **kwargs):
+    def __init__(
+        self,
+        model_name_or_path: str | None = None,
+        modules=None,
+        device: str | None = None,
+        prompts: dict[str, str] | None = None,
+        default_prompt_name: str | None = None,
+        similarity_fn_name=None,
+        cache_folder: str | None = None,
+        trust_remote_code: bool = False,
+        revision: str | None = None,
+        local_files_only: bool = False,
+        token=None,
+        use_auth_token=None,
+        truncate_dim: int | None = None,
+        model_kwargs: dict[str, Any] | None = None,
+        tokenizer_kwargs: dict[str, Any] | None = None,
+        config_kwargs: dict[str, Any] | None = None,
+        model_card_data=None,
+        backend: str = "rknn",
+    ) -> None:
         """
-        Patched version of SentenceTransformer.encode to support RKNN backend batch size requirements.
+        Initialize the RKSentenceTransformer.
 
-        This function enforces the batch size specified in the RKNN model configuration when encoding sentences.
-        If the RKNN backend is detected (via a module attribute), the batch size is overridden to match the
-        RKNN model's configured batch size.
+        Args:
+            model_name_or_path (str, optional): Model name or path to load.
+            backend (str): The backend to use for model loading (default: "rknn").
+            All other arguments are passed to SentenceTransformer.__init__.
+        """
+        super().__init__(
+            model_name_or_path,
+            modules,
+            device,
+            prompts,
+            default_prompt_name,
+            similarity_fn_name,
+            cache_folder,
+            trust_remote_code,
+            revision,
+            local_files_only,
+            token,
+            use_auth_token,
+            truncate_dim,
+            model_kwargs,
+            tokenizer_kwargs,
+            config_kwargs,
+            model_card_data,
+            backend,
+        )
+
+    def _load_auto_model(
+        self,
+        model_name_or_path: str,
+        token,
+        cache_folder,
+        revision,
+        trust_remote_code,
+        local_files_only,
+        model_kwargs,
+        tokenizer_kwargs,
+        config_kwargs,
+        has_modules,
+    ):
+        """
+        Override _load_auto_model to use RKTransformer for RKNN backend.
+
+        This ensures that when creating models from plain transformers (no modules.json),
+        we use RKTransformer which supports the RKNN backend.
+        """
+        logger.warning(
+            f"No sentence-transformers model found with name {model_name_or_path}. "
+            "Creating a new one with mean pooling."
+        )
+
+        shared_kwargs = {
+            "token": token,
+            "trust_remote_code": trust_remote_code,
+            "revision": revision,
+            "local_files_only": local_files_only,
+        }
+        model_kwargs = shared_kwargs if model_kwargs is None else {**shared_kwargs, **model_kwargs}
+        tokenizer_kwargs = shared_kwargs if tokenizer_kwargs is None else {**shared_kwargs, **tokenizer_kwargs}
+        config_kwargs = shared_kwargs if config_kwargs is None else {**shared_kwargs, **config_kwargs}
+
+        # Use RKTransformer instead of Transformer
+        transformer_model = RKTransformer(
+            model_name_or_path,
+            cache_dir=cache_folder,
+            model_args=model_kwargs,
+            tokenizer_args=tokenizer_kwargs,
+            config_args=config_kwargs,
+            backend=self.backend,
+        )
+        pooling_model = Pooling(transformer_model.get_word_embedding_dimension(), "mean")
+        return [transformer_model, pooling_model]
+
+    def encode(self, sentences: str | list[str], **kwargs):
+        """
+        Encode sentences with RKNN backend batch size requirements.
+
+        Overrides SentenceTransformer.encode to enforce the batch size specified in the RKNN
+        model configuration when encoding sentences.
 
         Parameters:
-            self: The SentenceTransformer instance.
             sentences (str or list of str): The sentence or list of sentences to encode.
-            **kwargs: Additional keyword arguments passed to the original encode method. The 'batch_size'
-                argument will be overridden if the RKNN backend is active.
+            **kwargs: Additional keyword arguments passed to the original encode method.
+                The 'batch_size' argument will be overridden if the RKNN backend is active.
 
         Returns:
             np.ndarray: The encoded sentence embeddings as a numpy array.
-
-        RKNN-specific behavior:
-            - If an RKNN config with a 'batch_size' is present, the batch size is enforced.
-            - For non-sentence-transformers models, manual batching is performed to ensure correct tensor shapes.
-            - A warning is logged once if the user-supplied batch size differs from the RKNN model's batch size.
         """
-        batch_size = kwargs.pop("batch_size", 32)  # Default batch size from SentenceTransformers
+        batch_size = kwargs.pop("batch_size", 32)
+
         # Check for RKNN config in modules
         rknn_config = None
         for module in self:
@@ -559,7 +570,7 @@ def patch_sentence_transformer():
 
         if not rknn_config or "batch_size" not in rknn_config:
             kwargs["batch_size"] = batch_size
-            return original_encode(self, sentences, **kwargs)
+            return super().encode(sentences, **kwargs)
 
         rknn_batch_size = rknn_config["batch_size"]
         if batch_size != rknn_batch_size:
@@ -575,24 +586,18 @@ def patch_sentence_transformer():
                 break
         if is_sentence_transformer:
             kwargs["batch_size"] = rknn_batch_size
-            return original_encode(self, sentences, **kwargs)
+            return super().encode(sentences, **kwargs)
 
-        # For non-sentence-transformers models (e.g. bert-base-uncased), we need to batch manually.
-        # Otherwise, the Pooling layer causes a runtime error due to misshapen tensors.
+        # For non-sentence-transformers models, batch manually
         if isinstance(sentences, str):
-            sentences = [sentences]
+            return super().encode(sentences, **kwargs)
 
         all_embeddings = []
         for i in range(0, len(sentences), rknn_batch_size):
             batch = sentences[i : i + rknn_batch_size]
-            # Call original_encode without batch_size to let it process the batch as-is
-            batch_embeddings = original_encode(self, batch, **kwargs)
+            batch_embeddings = super().encode(batch, **kwargs)
             all_embeddings.append(batch_embeddings)
 
         if not all_embeddings:
             return np.array([])
         return np.vstack(all_embeddings)
-
-    SentenceTransformer.encode = encode_patched  # type: ignore
-
-    logger.info("Patched SentenceTransformer to support RKNN backend.")

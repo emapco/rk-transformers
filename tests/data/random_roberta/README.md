@@ -46,7 +46,6 @@ pip install rk-transformers
 from rktransformers import RKRTModelForFeatureExtraction
 from transformers import AutoTokenizer
 
-# Load tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained("random_roberta")
 model = RKRTModelForFeatureExtraction.from_pretrained(
     "random_roberta",
@@ -55,18 +54,16 @@ model = RKRTModelForFeatureExtraction.from_pretrained(
     file_name="model_b1_s16.rknn"
 )
 
-# Tokenize and run inference
 inputs = tokenizer(
     ["Sample text for encoding"],
     padding="max_length",
-    max_length=16,
+    max_length=64,
     truncation=True,
     return_tensors="np"
 )
 
 outputs = model(**inputs)
 print(outputs.shape)
-
 ```
 
 ## Configuration

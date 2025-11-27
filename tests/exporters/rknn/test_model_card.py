@@ -242,7 +242,7 @@ class TestModelCardGenerator:
         with open(readme_path) as f:
             content = f.read()
             assert "Sentence Transformers" in content
-            assert "patch_sentence_transformer" in content
+            assert "RKSentenceTransformer" in content
 
     def test_generate_readme_no_st(self, temp_dir: Path) -> None:
         """Test that Sentence Transformers usage is HIDDEN when config is missing."""
@@ -263,7 +263,7 @@ class TestModelCardGenerator:
         with open(readme_path) as f:
             content = f.read()
             assert "Sentence Transformers" not in content
-            assert "patch_sentence_transformer" not in content
+            assert "RKSentenceTransformer" not in content
 
     def test_generate_readme_dynamic_task(self, temp_dir: Path) -> None:
         """Test that the correct RKRTModel class is used based on the task."""

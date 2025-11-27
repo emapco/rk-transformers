@@ -5,7 +5,7 @@
 [![huggingface](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-FFD21E)](https://huggingface.co/rk-transformers)
 [![Python 3.10-3.12](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://www.python.org/downloads/)
 [![PyPI - Version](https://img.shields.io/pypi/v/rk-transformers)](https://pypi.org/project/rk-transformers/)
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/emapco/rk-transformers/ci.yml)](https://github.com/emapco/rk-transformers/actions)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/emapco/rk-transformers/ci.yaml)](https://github.com/emapco/rk-transformers/actions/workflows/ci.yaml)
 ![Status](https://img.shields.io/pypi/status/rk-transformers)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/emapco/rk-transformers/blob/main/LICENSE)
 [![Star on GitHub](https://img.shields.io/github/stars/emapco/rk-transformers?style=social)](https://github.com/emapco/rk-transformers)
@@ -135,50 +135,39 @@ rk-transformers-cli export \
 
 #### SentenceTransformer
 ```python
-from sentence_transformers import SentenceTransformer
+from rktransformers import RKSentenceTransformer
 
-from rktransformers import patch_sentence_transformer
-
-# Apply RKNN backend patch
-patch_sentence_transformer()
-
-# Load model with RKNN backend
-model = SentenceTransformer(
+model = RKSentenceTransformer(
     "rk-transformers/all-MiniLM-L6-v2",
-    backend="rknn",
-    model_kwargs={"platform": "rk3588", "core_mask": "all"},
+    model_kwargs={
+        "platform": "rk3588",
+        "core_mask": "all",
+    },
 )
 
-# Generate embeddings
 sentences = ["This is a test sentence", "Another example"]
 embeddings = model.encode(sentences)
 print(embeddings.shape)  # (2, 384)
 
 # Load specific quantized model file
-model = SentenceTransformer(
+model = RKSentenceTransformer(
     "rk-transformers/all-MiniLM-L6-v2",
-    backend="rknn",
-    model_kwargs={"platform": "rk3588", "file_name": "rknn/model_w8a8.rknn"},
+    model_kwargs={
+        "platform": "rk3588",
+        "file_name": "rknn/model_w8a8.rknn",
+    },
 )
 ```
 
 #### CrossEncoder
 ```python
-from sentence_transformers import CrossEncoder
+from rktransformers import RKCrossEncoder
 
-from rktransformers import patch_cross_encoder
-
-# Apply RKNN backend patch
-patch_cross_encoder()
-
-# Load CrossEncoder model with RKNN backend
-model = CrossEncoder(
+model = RKCrossEncoder(
     "rk-transformers/ms-marco-MiniLM-L12-v2",
-    backend="rknn",
     model_kwargs={"platform": "rk3588", "core_mask": "auto"},
 )
 
-# Perform inference
 pairs = [
     ["How old are you?", "What is your age?"],
     ["Hello world", "Hi there!"],
@@ -196,6 +185,15 @@ documents = [
 ]
 results = model.rank(query, documents)
 print(results)
+
+# Load specific quantized model file
+model = RKCrossEncoder(
+    "rk-transformers/ms-marco-MiniLM-L12-v2",
+    model_kwargs={
+        "platform": "rk3588",
+        "file_name": "rknn/model_w8a8.rknn",
+    },
+)
 ```
 
 ### 3. Use RK-Transformers API Directly
@@ -331,16 +329,22 @@ model = RKRTModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniL
 #### Sentence Transformers Integration
 
 ```python
-from sentence_transformers import SentenceTransformer
+from rktransformers import RKSentenceTransformer, RKCrossEncoder
 
-from rktransformers import patch_sentence_transformer
-
-patch_sentence_transformer()
-
-model = SentenceTransformer(
+model = RKSentenceTransformer(
     "rk-transformers/all-MiniLM-L6-v2",
-    backend="rknn",
-    model_kwargs={"platform": "rk3588", "core_mask": "auto"}
+    model_kwargs={
+        "platform": "rk3588",
+        "core_mask": "auto",
+    },
+)
+
+model = RKCrossEncoder(
+    "rk-transformers/ms-marco-MiniLM-L12-v2",
+    model_kwargs={
+        "platform": "rk3588",
+        "core_mask": "auto",
+    },
 )
 ```
 
@@ -352,14 +356,26 @@ Current RKNN support for dynamic inputs is **experimental and not fully function
 
 - **Performance Impact**: The NPU allocates memory based on the static shape. If you export with `max_seq_length=512` but only infer on 10 tokens, the NPU still processes the full 512-token padding, leading to inefficient inference.
 - **Usage**: You must ensure your input tensors match the exported dimensions (or use padding).
-- **Recommendation**: Export multiple versions of your model optimized for different sequence lengths (e.g., 128, 256, 512) if your workload varies significantly.
+- **Recommendation**: Export multiple versions of your model optimized for different sequence lengths (e.g., 128, 256, 512) and batch sizes (e.g., 1, 2, 4) if your workload varies significantly.
 
 ### Quantization Support
 
 While the tool supports various quantization data types, many are **experimental**.
 
 - **`w8a8` (Weights 8-bit, Activations 8-bit)**: The only widely supported and tested configuration. Recommended for most use cases.
-- Other formats (e.g., `w8a16`, `w16a16i`) may cause conversion failures or runtime errors depending on the specific model operators and RKNN toolkit version.
+- Other formats (e.g., `w8a16`, `w16a16i`) may cause conversion failures or runtime errors depending on the specific model operators, RKNN toolkit version, and platform.
+
+### Operator Support
+
+[RKNN currently supports a subset of operators supported by ONNX.](https://github.com/airockchip/rknn-toolkit2/blob/master/doc/RKNNToolKit2_OP_Support-2.3.2.md) If your model uses operators not supported by RKNN, you may need to explore setting different export parameters:
+
+Easy methods (limited success):
+- `opset`: 14-19
+- `op_target`: {'op_id':'cpu', 'op_id3':'cpu'}
+
+Hard methods:
+- Modify the ONNX model graph to replace unsupported operators with supported ones.
+- Incorporate the `rknn.register_custom_op()` method inbetween `rknn.config()` and `rknn.load_onnx()` in the `convert.py` module.
 
 ## Architecture
 
@@ -396,14 +412,17 @@ graph TB
     
     subgraph "Framework Integration"
         ST[Sentence Transformers]
-        HFHUB[Hugging Face Hub]
-        PATCH[patch_sentence_transformer]
+        RKST[RKSentenceTransformer]
+        RKCE[RKCrossEncoder]
         RKRT[RKRTModel Classes]
+        HFT[Hugging Face Transformers]
         
-        ST -->|backend='rknn'| PATCH
-        PATCH -->|load_rknn_model| RKRT
-        HFHUB -->|from_pretrained| RKRT
+        ST -->|subclasses| RKST
+        ST -->|subclasses| RKCE
+        RKST -->|load_rknn_model| RKRT
+        RKCE -->|load_rknn_model| RKRT
         RKRT -->|inference| RKNN_LITE
+        HFT -->|pipeline| RKRT
     end
     
     style NPU fill:#ff9900

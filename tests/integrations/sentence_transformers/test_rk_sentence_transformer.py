@@ -14,12 +14,12 @@
 
 """Tests for RKNN backend integration with SentenceTransformer."""
 
+import random
 from pathlib import Path
 
 import pytest
-from sentence_transformers import SentenceTransformer
 
-from rktransformers.load import patch_sentence_transformer
+from rktransformers import RKSentenceTransformer
 from rktransformers.utils.env_utils import is_rockchip_platform
 from rktransformers.utils.import_utils import (
     is_rknn_toolkit_available,
@@ -32,21 +32,14 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture(scope="module", autouse=True)
-def setup_module() -> None:
-    """Apply the SentenceTransformer patch before running tests."""
-    patch_sentence_transformer()
-
-
 @pytest.mark.requires_rknpu
-class TestSentenceTransformersenceTransformerPatch:
+class TestRKSentenceTransformer:
     """Tests for RKNN backend integration with SentenceTransformers."""
 
     def test_load_rknn_model(self, random_bert_model_path: Path) -> None:
         """Test loading model with backend='rknn'."""
-        model = SentenceTransformer(
+        model = RKSentenceTransformer(
             str(random_bert_model_path),
-            backend="rknn",  # type: ignore
             model_kwargs={"file_name": "rknn/model_b1_s32_o3.rknn"},
         )
 
@@ -58,9 +51,8 @@ class TestSentenceTransformersenceTransformerPatch:
 
     def test_inference(self, random_bert_model_path: Path) -> None:
         """Test inference with the RKNN-loaded model."""
-        model = SentenceTransformer(
+        model = RKSentenceTransformer(
             str(random_bert_model_path),
-            backend="rknn",  # type: ignore
             model_kwargs={"file_name": "rknn/model_b1_s32_o3.rknn"},
         )
         sentences = ["hello", "world"]
@@ -89,9 +81,8 @@ class TestSentenceTransformersenceTransformerPatch:
             sentences: List of sentences to encode
             batch_size: Batch size for encoding
         """
-        model = SentenceTransformer(
+        model = RKSentenceTransformer(
             str(random_bert_model_path),
-            backend="rknn",  # type: ignore
             model_kwargs={"file_name": "rknn/model_b1_s32_o3.rknn"},
         )
         embeddings = model.encode(sentences, batch_size=batch_size)
@@ -101,9 +92,8 @@ class TestSentenceTransformersenceTransformerPatch:
 
     def test_model_attributes(self, random_bert_model_path: Path) -> None:
         """Test that model has expected attributes after loading."""
-        model = SentenceTransformer(
+        model = RKSentenceTransformer(
             str(random_bert_model_path),
-            backend="rknn",  # type: ignore
             model_kwargs={"file_name": "rknn/model_b1_s32_o3.rknn"},
         )
 
@@ -121,9 +111,8 @@ class TestSentenceTransformersenceTransformerPatch:
             random_bert_model_path: Path to the test model
             batch_size: Batch size for encoding
         """
-        model = SentenceTransformer(
+        model = RKSentenceTransformer(
             str(random_bert_model_path),
-            backend="rknn",  # type: ignore
             model_kwargs={"file_name": "rknn/model_b1_s32_o3.rknn"},
         )
         sentences = ["test sentence one", "test sentence two", "test sentence three", "test sentence four"]
@@ -134,22 +123,20 @@ class TestSentenceTransformersenceTransformerPatch:
 
     def test_encode_single_sentence(self, random_bert_model_path: Path) -> None:
         """Test encoding a single sentence with RKNN backend."""
-        model = SentenceTransformer(
+        model = RKSentenceTransformer(
             str(random_bert_model_path),
-            backend="rknn",  # type: ignore
             model_kwargs={"file_name": "rknn/model_b1_s32_o3.rknn"},
         )
         sentence = "single test sentence"
         embedding = model.encode(sentence)
 
-        assert embedding.ndim == 2  # [num_sentence, embedding_dim]
+        assert embedding.ndim == 1  # [embedding_dim,]
         assert embedding.shape[0] > 0
 
     def test_encode_empty_list(self, random_bert_model_path: Path) -> None:
         """Test encoding an empty list with RKNN backend."""
-        model = SentenceTransformer(
+        model = RKSentenceTransformer(
             str(random_bert_model_path),
-            backend="rknn",  # type: ignore
             model_kwargs={"file_name": "rknn/model_b1_s32_o3.rknn"},
         )
         sentences = []
@@ -162,11 +149,13 @@ INTEGRATION_SENTENCE_TRANSFORMER_MODEL = "rk-transformers/all-MiniLM-L6-v2"
 INTEGRATION_TRANSFORMER_MODEL = "rk-transformers/bert-base-uncased"
 
 
+# RKNN backend gets overloaded when running all tests at once
+@pytest.mark.flaky(reruns=2, reruns_delay=random.uniform(12, 20), only_rerun=["RuntimeError"])
 @pytest.mark.slow
 @pytest.mark.manual
 @pytest.mark.integration
 @pytest.mark.requires_rknpu
-class TestSentenceTransformerPatchIntegration:
+class TestRKSentenceTransformerIntegration:
     """Integration tests for RKNN backend with SentenceTransformers."""
 
     @pytest.mark.parametrize(
@@ -215,9 +204,8 @@ class TestSentenceTransformerPatchIntegration:
             model_id: Hugging Face model identifier
             batch_size: Batch size to use for encoding
         """
-        model = SentenceTransformer(
+        model = RKSentenceTransformer(
             model_id,
-            backend="rknn",  # type: ignore
             model_kwargs={"file_name": file_name} if file_name else {},
         )
         sentences = ["This is a test.", "RKNN integration test.", "Another sentence."]

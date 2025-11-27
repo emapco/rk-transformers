@@ -30,8 +30,8 @@ dependencies = [
     "optimum[onnx]>=2.0.0,<3.0.0",
     "torch>=2.2.0,<3.0.0",
     "transformers[torch]>=4.55.4,<5.0.0",
-    "huggingface-hub>=0.36.0",
     "sentence-transformers>=5.0.0,<6.0.0",
+    "huggingface-hub>=0.36.0",
 ]
 
 [project.urls]
@@ -44,7 +44,7 @@ Changelog = "https://github.com/emapco/rk-transformers/releases"
 [project.optional-dependencies]
 export = ["rknn-toolkit2==2.3.2", "datasets", "numpy==1.26.4"]
 inference = ["rknn-toolkit-lite2==2.3.2", "numpy>=1.26.4,<3.0.0"]
-dev = ["pytest", "pytest-cov", "pytest-xdist", "pytest-env", "pre-commit", "build", "ruff", "ninja"]
+dev = ["pytest", "pytest-cov", "pytest-xdist", "pytest-env", "pytest-rerunfailures", "pre-commit", "build", "ruff", "ninja"]
 
 [project.scripts]
 rk-transformers-cli = "rktransformers.commands.rktransformers_cli:main"

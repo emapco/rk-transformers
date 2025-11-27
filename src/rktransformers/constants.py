@@ -42,6 +42,8 @@ IGNORE_MODEL_REPO_FILES = [
     ".gitattributes",
     "openvino/**",
     "onnx/**",
+    ".locks/**",
+    "models--*/**",
 ]
 ALLOW_MODEL_REPO_FILES = [
     "*.json",
@@ -50,7 +52,7 @@ ALLOW_MODEL_REPO_FILES = [
     "*.py",
     "*.yaml",
     "*.yml",
-    "*.rknn",  # Include RKNN model files
+    "*.rknn",
 ]
 
 PlatformType = Literal[

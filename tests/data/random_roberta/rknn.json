@@ -127,5 +127,48 @@
             "sparse_infer": false,
             "model_pruning": false
         }
+    },
+    "model_b1_s32.rknn": {
+        "rktransformers_version": "0.1.0",
+        "model_input_names": [
+            "input_ids",
+            "attention_mask"
+        ],
+        "batch_size": 1,
+        "max_seq_length": 32,
+        "float_dtype": "float16",
+        "target_platform": "rk3588",
+        "single_core_mode": false,
+        "mean_values": null,
+        "std_values": null,
+        "custom_string": null,
+        "inputs_yuv_fmt": null,
+        "dynamic_input": null,
+        "opset": 18,
+        "task": "auto",
+        "quantization": {
+            "do_quantization": false,
+            "dataset_name": null,
+            "dataset_subset": null,
+            "dataset_size": 128,
+            "dataset_split": null,
+            "dataset_columns": null,
+            "quantized_dtype": "w8a8",
+            "quantized_algorithm": "normal",
+            "quantized_method": "channel",
+            "quantized_hybrid_level": 0,
+            "quant_img_RGB2BGR": false,
+            "auto_hybrid_cos_thresh": 0.98,
+            "auto_hybrid_euc_thresh": null
+        },
+        "optimization": {
+            "optimization_level": 0,
+            "enable_flash_attention": false,
+            "remove_weight": false,
+            "compress_weight": false,
+            "remove_reshape": false,
+            "sparse_infer": false,
+            "model_pruning": false
+        }
     }
 }

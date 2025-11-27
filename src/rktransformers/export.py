@@ -14,5 +14,12 @@
 
 from rktransformers.configuration import OptimizationConfig, QuantizationConfig, RKNNConfig
 from rktransformers.exporters.rknn.convert import export_rknn
+from rktransformers.exporters.rknn.model_card import ModelCardGenerator
 
-__all__ = ["export_rknn", "RKNNConfig", "QuantizationConfig", "OptimizationConfig"]
+__all__ = [
+    "export_rknn",
+    "RKNNConfig",
+    "QuantizationConfig",
+    "OptimizationConfig",
+    "ModelCardGenerator",
+]

@@ -12,24 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "0.1.0"
-
-
-from .configuration import OptimizationConfig, QuantizationConfig, RKNNConfig
-from .integrations import RKCrossEncoder, RKSentenceTransformer
-from .modeling import RKRTModel, RKRTModelForFeatureExtraction, RKRTModelForMaskedLM, RKRTModelForSequenceClassification
+from .sentence_transformers import RKCrossEncoder, RKSentenceTransformer
 
 __all__ = [
-    # Config
-    "OptimizationConfig",
-    "QuantizationConfig",
-    "RKNNConfig",
-    # Integrations
     "RKCrossEncoder",
     "RKSentenceTransformer",
-    # Models
-    "RKRTModel",
-    "RKRTModelForFeatureExtraction",
-    "RKRTModelForMaskedLM",
-    "RKRTModelForSequenceClassification",
 ]

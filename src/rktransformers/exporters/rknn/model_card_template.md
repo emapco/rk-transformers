@@ -34,16 +34,10 @@ pip install rk-transformers
 #### Sentence Transformers
 
 ```python
-from sentence_transformers import SentenceTransformer
-from rktransformers import patch_sentence_transformer
+from rktransformers import RKSentenceTransformer
 
-# Apply RKNN backend patch
-patch_sentence_transformer()
-
-# Load model with RKNN backend
-model = SentenceTransformer(
+model = RKSentenceTransformer(
     "{{ example_model_path }}",
-    backend="rknn",
     model_kwargs={
         "platform": "{{ target_platform }}",
         "core_mask": "auto",{% if example_file_name %}
@@ -51,15 +45,13 @@ model = SentenceTransformer(
     }
 )
 
-# Generate embeddings
 sentences = ["This is a test sentence", "Another example"]
 embeddings = model.encode(sentences)
-print(embeddings.shape)
-{% if optimized_model_path %}
+print(embeddings.shape){% if optimized_model_path %}
+
 # Load specific optimized/quantized model file
-model = SentenceTransformer(
+model = RKSentenceTransformer(
     "{{ example_model_path }}",
-    backend="rknn",
     model_kwargs={
         "platform": "{{ target_platform }}",
         "file_name": "{{ optimized_model_path }}"
@@ -72,7 +64,6 @@ model = SentenceTransformer(
 from rktransformers import {{ rk_model_class }}
 from transformers import AutoTokenizer
 
-# Load tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained("{{ tokenizer_path }}")
 model = {{ rk_model_class }}.from_pretrained(
     "{{ example_model_path }}",
@@ -81,7 +72,6 @@ model = {{ rk_model_class }}.from_pretrained(
     file_name="{{ example_file_name }}"{% endif %}
 )
 
-# Tokenize and run inference
 inputs = tokenizer(
     ["Sample text for encoding"],
     padding="max_length",
@@ -91,8 +81,8 @@ inputs = tokenizer(
 )
 
 outputs = model(**inputs)
-print(outputs.shape)
-{% if optimized_model_path %}
+print(outputs.shape){% if optimized_model_path %}
+
 # Load specific optimized/quantized model file
 model = {{ rk_model_class }}.from_pretrained(
     "{{ example_model_path }}",

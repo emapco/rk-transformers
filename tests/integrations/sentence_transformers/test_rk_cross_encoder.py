@@ -14,14 +14,14 @@
 
 """Tests for RKNN backend integration with CrossEncoder."""
 
+import random
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 import torch
-from sentence_transformers import CrossEncoder
 
-from rktransformers import patch_cross_encoder
+from rktransformers import RKCrossEncoder
 from rktransformers.utils.env_utils import is_rockchip_platform
 from rktransformers.utils.import_utils import (
     is_rknn_toolkit_available,
@@ -29,32 +29,22 @@ from rktransformers.utils.import_utils import (
 )
 
 
-@pytest.fixture(scope="module", autouse=True)
-def setup_module() -> None:
-    """Apply the CrossEncoder patch before running tests."""
-    patch_cross_encoder()
-
-
 @pytest.mark.requires_rknpu
-class TestCrossEncoderPatch:
+class TestRKCrossEncoder:
     """Tests for RKNN backend integration with CrossEncoder."""
 
-    def test_load_rknn_cross_encoder(self) -> None:
-        """Test loading CrossEncoder with backend='rknn'."""
+    def test_rk_cross_encoder(self) -> None:
+        """Test using RKCrossEncoder derived class."""
         with (
-            patch("rktransformers.load.load_rknn_model") as mock_load_rknn,
+            patch("rktransformers.integrations.sentence_transformers.load_rknn_model") as mock_load_rknn,
             patch("transformers.AutoConfig.from_pretrained") as mock_config_cls,
             patch("transformers.AutoTokenizer.from_pretrained") as mock_tokenizer_cls,
             patch("sentence_transformers.cross_encoder.CrossEncoder.load_file_path") as mock_load_file_path,
         ):
             mock_config = MagicMock()
-            # Setting sentence_transformers to empty dict avoids "version" check
             mock_config.sentence_transformers = {}
-            # Ensure no activation function is accidentally found
             mock_config.sbert_ce_default_activation_function = None
-            # Also ensure architectures is list of strings or None
             mock_config.architectures = ["BertForSequenceClassification"]
-            # Set max_position_embeddings to int
             mock_config.max_position_embeddings = 512
             mock_config_cls.return_value = mock_config
 
@@ -62,27 +52,29 @@ class TestCrossEncoderPatch:
             mock_tokenizer.model_max_length = 512
             mock_tokenizer_cls.return_value = mock_tokenizer
 
-            # Mock load_file_path to return None (no README)
             mock_load_file_path.return_value = None
 
-            # Mock load_rknn_model to avoid actual RKNN loading
             mock_rknn_model = MagicMock()
-            mock_rknn_model.config = mock_config  # Link config
+            mock_rknn_model.config = mock_config
             mock_load_rknn.return_value = mock_rknn_model
 
             try:
-                model = CrossEncoder(
+                # Test direct instantiation
+                model = RKCrossEncoder(
                     "dummy-model",
-                    backend="rknn",  # type: ignore
                     model_kwargs={"file_name": "model.rknn"},
                 )
 
                 # Verify load_rknn_model was called
                 mock_load_rknn.assert_called_once()
+                # Verify backend is rknn by default
                 assert model.backend == "rknn"
+                # Verify tokenizer settings
+                assert model.tokenizer.padding == "max_length"
+                assert model.tokenizer.pad_to_max_length is True
 
             except Exception as e:
-                pytest.fail(f"Failed to load mocked RKNN CrossEncoder: {e}")
+                pytest.fail(f"Failed to load mocked RKCrossEncoder: {e}")
 
     def test_predict_rknn_padding(self) -> None:
         """Test predict method enforces max_length padding."""
@@ -92,7 +84,7 @@ class TestCrossEncoderPatch:
                 return self
 
         with (
-            patch("rktransformers.load.load_rknn_model") as mock_load_rknn,
+            patch("rktransformers.integrations.sentence_transformers.load_rknn_model") as mock_load_rknn,
             patch("transformers.AutoTokenizer.from_pretrained") as mock_tokenizer_cls,
             patch("transformers.AutoConfig.from_pretrained") as mock_config_cls,
             patch("sentence_transformers.cross_encoder.CrossEncoder.load_file_path") as mock_load_file_path,
@@ -121,9 +113,8 @@ class TestCrossEncoderPatch:
             )
             mock_tokenizer_cls.return_value = mock_tokenizer
 
-            model = CrossEncoder(
+            model = RKCrossEncoder(
                 "dummy-model",
-                backend="rknn",  # type: ignore
                 model_kwargs={"file_name": "model.rknn"},
             )
 
@@ -150,11 +141,13 @@ pytestmark = pytest.mark.skipif(
 INTEGRATION_CROSS_ENCODER_MODEL = "rk-transformers/ms-marco-MiniLM-L12-v2"
 
 
+# RKNN backend gets overloaded when running all tests at once
+@pytest.mark.flaky(reruns=2, reruns_delay=random.uniform(12, 20), only_rerun=["RuntimeError"])
 @pytest.mark.slow
 @pytest.mark.manual
 @pytest.mark.integration
 @pytest.mark.requires_rknpu
-class TestCrossEncoderPatchIntegration:
+class TestRKCrossEncoderIntegration:
     """Integration tests for RKNN backend with CrossEncoder."""
 
     @pytest.mark.parametrize(
@@ -182,16 +175,15 @@ class TestCrossEncoderPatchIntegration:
             file_name: Specific RKNN file to load (or None for default)
             batch_size: Batch size to use for prediction
         """
-        from sentence_transformers import CrossEncoder
+        from rktransformers import RKCrossEncoder
 
         # Build model_kwargs with file_name if provided
         model_kwargs = {"platform": "rk3588", "core_mask": "auto"}
         if file_name:
             model_kwargs["file_name"] = file_name
 
-        model = CrossEncoder(
+        model = RKCrossEncoder(
             model_id,
-            backend="rknn",  # type: ignore
             model_kwargs=model_kwargs,
         )
 

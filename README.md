@@ -106,6 +106,7 @@ Development dependencies include:
 rk-transformers-cli export \
   --model sentence-transformers/all-MiniLM-L6-v2 \
   --platform rk3588 \
+  --flash-attention \
   --optimization-level 3 \
   --opset 19  # Default is 18
 
@@ -113,10 +114,12 @@ rk-transformers-cli export \
 rk-transformers-cli export \
   --model sentence-transformers/all-MiniLM-L6-v2 \
   --platform rk3588 \
+  --flash-attention \
   --quantize \
   --dtype w8a8 \
   --dataset sentence-transformers/natural-questions \
-  --dataset-split test \
+  --dataset-split train \
+  --dataset-columns answer \
   --dataset-size 128 \
   --max-seq-length 128 # Default is 512
 
@@ -124,6 +127,7 @@ rk-transformers-cli export \
 rk-transformers-cli export \
   --model ./my-model/model.onnx \
   --platform rk3588 \
+  --flash-attention \
   --batch-size 4 # Default is 1
 ```
 

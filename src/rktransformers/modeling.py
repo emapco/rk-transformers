@@ -367,11 +367,11 @@ class RKRTModel(
         batch_pad = max(0, target_batch - current_batch)
 
         if use_torch:
-            # Pad sequence length first (right padding), then batch size (bottom padding)
-            tensor = torch.nn.functional.pad(tensor, (padding_id, length_pad, padding_id, batch_pad))
+            # Pad sequence length (right), then batch size (bottom)
+            tensor = torch.nn.functional.pad(tensor, (0, length_pad, 0, batch_pad), value=padding_id)
         else:
             # NumPy padding: ((before_batch, after_batch), (before_seq, after_seq))
-            tensor = np.pad(tensor, ((padding_id, batch_pad), (padding_id, length_pad)))
+            tensor = np.pad(tensor, ((0, batch_pad), (0, length_pad)), constant_values=padding_id)
 
         return tensor
 

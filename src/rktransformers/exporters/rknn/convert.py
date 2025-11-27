@@ -28,7 +28,6 @@ from rktransformers.constants import (
     IGNORE_MODEL_REPO_FILES,
 )
 from rktransformers.exporters.rknn.model_card import ModelCardGenerator
-from rktransformers.kernels import ALL_KERNELS
 
 from .utils import (
     clean_intermediate_onnx_files,
@@ -37,7 +36,6 @@ from .utils import (
     get_onnx_input_names,
     load_model_config,
     prepare_dataset_for_quantization,
-    replace_onnx_op,
     resolve_hub_repo_id,
     store_rknn_json,
 )
@@ -63,14 +61,14 @@ def export_rknn(config: RKNNConfig) -> None:
     Returns:
         None on success, raises RuntimeError on failure
     """
-    if not config.model_id_or_path:
-        raise ValueError("model_id_or_path is required in configuration")
+    if not config.model_name_or_path:
+        raise ValueError("model_name_or_path is required in configuration")
 
     # Capture original model ID for model card
-    base_model_id = config.model_id_or_path
-    # Check if model_id_or_path is a local file
+    base_model_id = config.model_name_or_path
+    # Check if model_name_or_path is a local file
     # Consider it local if it has .onnx extension or exists on disk
-    is_local_model = config.model_id_or_path.endswith(".onnx") or os.path.exists(config.model_id_or_path)
+    is_local_model = config.model_name_or_path.endswith(".onnx") or os.path.exists(config.model_name_or_path)
     # Track paths separately for different purposes:
     # - onnx_model_path: path to the ONNX file for RKNN loading
     # - model_config_path: path to model directory/Hub ID for config loading
@@ -78,7 +76,7 @@ def export_rknn(config: RKNNConfig) -> None:
     model_config_path = None
 
     if not is_local_model:
-        logger.info(f"Model path '{config.model_id_or_path}' not found locally. Treating as Hugging Face Hub ID.")
+        logger.info(f"Model path '{config.model_name_or_path}' not found locally. Treating as Hugging Face Hub ID.")
 
         # Determine output directory for caching model files
         if config.output_path:
@@ -96,7 +94,7 @@ def export_rknn(config: RKNNConfig) -> None:
             rknn_filename = "model.rknn"
 
         # Extract model name from Hub ID (e.g. "answerdotai/ModernBERT-base" -> "ModernBERT-base")
-        model_name = config.model_id_or_path.split("/")[-1]
+        model_name = config.model_name_or_path.split("/")[-1]
         output_dir = os.path.join(base_output_dir, model_name)
 
         # Update config.output_path to be inside this new directory
@@ -106,13 +104,13 @@ def export_rknn(config: RKNNConfig) -> None:
         try:
             # Download all model files (config, tokenizer, etc.) but exclude weights
             snapshot_download(
-                repo_id=config.model_id_or_path,
+                repo_id=config.model_name_or_path,
                 local_dir=output_dir,
                 ignore_patterns=IGNORE_MODEL_REPO_FILES,
                 allow_patterns=ALLOW_MODEL_REPO_FILES,
             )
             download_sentence_transformer_modules_weights(
-                repo_id=config.model_id_or_path,
+                repo_id=config.model_name_or_path,
                 local_dir=output_dir,
                 token=config.hub_token,
             )
@@ -124,7 +122,7 @@ def export_rknn(config: RKNNConfig) -> None:
             # Export to ONNX using Optimum's main_export
             # Use batch_size and max_seq_length from config for input shapes
             main_export(
-                model_name_or_path=config.model_id_or_path,
+                model_name_or_path=config.model_name_or_path,
                 output=output_dir,
                 task=config.task,  # onnx resolves "auto" internally
                 opset=config.opset,
@@ -144,9 +142,9 @@ def export_rknn(config: RKNNConfig) -> None:
             raise RuntimeError(f"Failed to export model from Hub: {e}") from e
     else:
         # For local models, use the ONNX file directly
-        onnx_model_path = config.model_id_or_path
+        onnx_model_path = config.model_name_or_path
         # For config loading, use the directory containing the ONNX file
-        model_config_path = os.path.dirname(os.path.abspath(config.model_id_or_path))
+        model_config_path = os.path.dirname(os.path.abspath(config.model_name_or_path))
 
     model_config = load_model_config(model_config_path)  # used for auto-detection
     # Auto-detect max_seq_length if not provided
@@ -163,21 +161,6 @@ def export_rknn(config: RKNNConfig) -> None:
     rknn = RKNN(verbose=True)
     logger.info(f"Configuring RKNN for {config.target_platform}")
     rknn.config(**config.to_dict())
-
-    # Custom op registration must happen after config() but before load_onnx()
-    if config.enable_custom_kernels:
-        logger.info("Registering custom kernels")
-        for kernel in ALL_KERNELS:
-            ret = rknn.reg_custom_op(kernel())
-            if ret != 0:
-                raise RuntimeError(f"Register custom op failed: {kernel.__name__}")
-
-        # Patch the ONNX model to use the custom op type
-        # This is necessary because RKNN does not allow overriding standard ops like CumSum
-        # via reg_custom_op unless they have a custom op_type (e.g. cstCumSum).
-        logger.warning("Patching ONNX model to use custom ops where applicable")
-        onnx_model_path = replace_onnx_op(onnx_model_path, "CumSum", "cstCumSum")
-        logger.warning(f"Patched ONNX model path: {onnx_model_path}")
 
     logger.info(f"Loading ONNX model: {onnx_model_path}")
     sequence_length = config.max_seq_length

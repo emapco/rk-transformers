@@ -247,26 +247,26 @@ def prepare_dataset_for_quantization(
     return dataset_file_path, target_columns, splits_to_try
 
 
-def load_model_config(model_id_or_path: str) -> dict:
+def load_model_config(model_name_or_path: str) -> dict:
     """
     Load model configuration from config.json or Hugging Face Hub.
 
     Args:
-        model_id_or_path: Path to the ONNX model file or Hub ID
+        model_name_or_path: Path to the ONNX model file or Hub ID
 
     Returns:
         Dictionary containing model configuration or empty dict if not found.
     """
     try:
         # Use AutoConfig to load configuration (handles both local and Hub)
-        config = AutoConfig.from_pretrained(model_id_or_path, trust_remote_code=True)
+        config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
         return config.to_dict()
     except Exception as e:
-        logger.warning(f"Failed to load config for {model_id_or_path}: {e}")
+        logger.warning(f"Failed to load config for {model_name_or_path}: {e}")
 
         # Fallback for local directory if AutoConfig fails
-        if os.path.isdir(model_id_or_path):
-            config_path = os.path.join(model_id_or_path, "config.json")
+        if os.path.isdir(model_name_or_path):
+            config_path = os.path.join(model_name_or_path, "config.json")
             if os.path.exists(config_path):
                 try:
                     with open(config_path) as f:
@@ -403,26 +403,6 @@ def get_onnx_input_names(model_path: str) -> list[str] | None:
     except Exception as e:
         logger.warning(f"Failed to extract input names from ONNX model: {e}")
         return None
-
-
-def replace_onnx_op(onnx_model_weights_path: str, old_op_type: str, new_op_type: str) -> str:
-    """
-    Replace all occurrences of an operator in an ONNX model with a new operator type.
-    Returns the path to the modified model.
-    """
-    model = onnx.load(onnx_model_weights_path)
-    modified = False
-    for node in model.graph.node:
-        if node.op_type == old_op_type:
-            node.op_type = new_op_type
-            modified = True
-
-    if modified:
-        new_path = onnx_model_weights_path.replace(".onnx", f"_patched_{new_op_type}.onnx")
-        onnx.save(model, new_path)
-        return new_path
-
-    return onnx_model_weights_path
 
 
 def get_rk_model_class(task: str) -> str:

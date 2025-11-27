@@ -158,8 +158,8 @@ class TestSentenceTransformersenceTransformerPatch:
         assert embeddings.shape[0] == 0
 
 
-integration_sentence_transformer_model_id = "rk-transformers/all-MiniLM-L6-v2"
-integration_transformer_model_model_id = "rk-transformers/bert-base-uncased"
+INTEGRATION_SENTENCE_TRANSFORMER_MODEL = "rk-transformers/all-MiniLM-L6-v2"
+INTEGRATION_TRANSFORMER_MODEL = "rk-transformers/bert-base-uncased"
 
 
 @pytest.mark.slow
@@ -172,14 +172,38 @@ class TestSentenceTransformerPatchIntegration:
     @pytest.mark.parametrize(
         "model_id,file_name,batch_size",
         [
-            (integration_sentence_transformer_model_id, None, 1),
-            (integration_sentence_transformer_model_id, "model_b4_s512.rknn", 1),
-            (integration_sentence_transformer_model_id, None, 4),
-            (integration_sentence_transformer_model_id, "model_b4_s512.rknn", 4),
-            (integration_transformer_model_model_id, None, 1),
-            (integration_transformer_model_model_id, "model_b4_s512.rknn", 1),
-            (integration_transformer_model_model_id, None, 4),
-            (integration_transformer_model_model_id, "model_b4_s512.rknn", 4),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, None, 1),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b4_s512.rknn", 1),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b1_s256.rknn", 1),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b4_s256.rknn", 1),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, None, 2),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b4_s512.rknn", 2),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b1_s256.rknn", 2),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b4_s256.rknn", 2),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, None, 3),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b4_s512.rknn", 3),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b1_s256.rknn", 3),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b4_s256.rknn", 3),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, None, 4),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b4_s512.rknn", 4),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b1_s256.rknn", 4),
+            (INTEGRATION_SENTENCE_TRANSFORMER_MODEL, "model_b4_s256.rknn", 4),
+            (INTEGRATION_TRANSFORMER_MODEL, None, 1),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b4_s512.rknn", 1),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b1_s256.rknn", 1),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b4_s256.rknn", 1),
+            (INTEGRATION_TRANSFORMER_MODEL, None, 2),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b4_s512.rknn", 2),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b1_s256.rknn", 2),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b4_s256.rknn", 2),
+            (INTEGRATION_TRANSFORMER_MODEL, None, 3),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b4_s512.rknn", 3),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b1_s256.rknn", 3),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b4_s256.rknn", 3),
+            (INTEGRATION_TRANSFORMER_MODEL, None, 4),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b4_s512.rknn", 4),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b1_s256.rknn", 4),
+            (INTEGRATION_TRANSFORMER_MODEL, "model_b4_s256.rknn", 4),
         ],
     )
     def test_inference_with_file_names_and_batch_sizes(
@@ -196,7 +220,7 @@ class TestSentenceTransformerPatchIntegration:
             backend="rknn",  # type: ignore
             model_kwargs={"file_name": file_name} if file_name else {},
         )
-        sentences = ["This is a test.", "RKNN integration test.", "Another sentence.", "Final test."]
+        sentences = ["This is a test.", "RKNN integration test.", "Another sentence."]
         embeddings = model.encode(sentences, batch_size=batch_size)
 
         assert embeddings.shape[0] == len(sentences)

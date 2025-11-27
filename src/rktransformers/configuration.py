@@ -209,7 +209,7 @@ class RKNNConfig:
             ```
 
         # Export Settings
-        model_id_or_path: Path to input ONNX model file or Hugging Face model ID.
+        model_name_or_path: Path to input ONNX model file or Hugging Face model ID.
         output_path: Path for output RKNN model file or directory.
             Optional. Defaults to the model's parent directory (for local files) or current directory (for Hub models).
         push_to_hub: Upload the exported model to HuggingFace Hub.
@@ -253,16 +253,13 @@ class RKNNConfig:
     op_target: dict[str, str] | None = None
 
     # Export settings
-    model_id_or_path: str | None = None
+    model_name_or_path: str | None = None
     output_path: str | None = None
     push_to_hub: bool = False
     hub_model_id: str | None = None
     hub_token: str | None = None
     hub_private_repo: bool = False
     hub_create_pr: bool = False
-
-    # Custom kernels
-    enable_custom_kernels: bool = False
 
     # Optimum export settings
     opset: OpsetType | None = DEFAULT_OPSET
@@ -308,6 +305,8 @@ class RKNNConfig:
         This includes ALL configuration parameters for reproducibility.
         """
         export_dict = {
+            # rktransformers configuration
+            "rktransformers_version": get_rktransformers_version(),
             # Model configuration
             "model_input_names": self.model_input_names,
             "batch_size": self.batch_size,
@@ -316,9 +315,6 @@ class RKNNConfig:
             # Platform configuration
             "target_platform": self.target_platform,
             "single_core_mode": self.single_core_mode,
-            # rktransformers configuration
-            "rktransformers_version": get_rktransformers_version(),
-            "enable_custom_kernels": self.enable_custom_kernels,
             # Other RKNN parameters
             "mean_values": self.mean_values,
             "std_values": self.std_values,

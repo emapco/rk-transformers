@@ -169,15 +169,29 @@ patch_cross_encoder()
 
 # Load CrossEncoder model with RKNN backend
 model = CrossEncoder(
-    "rk-transformers/bge-reranker-base",
+    "rk-transformers/ms-marco-MiniLM-L12-v2",
     backend="rknn",
     model_kwargs={"platform": "rk3588", "core_mask": "auto"},
 )
 
 # Perform inference
-pairs = [["How old are you?", "What is your age?"], ["Hello world", "Hi there!"]]
+pairs = [
+    ["How old are you?", "What is your age?"],
+    ["Hello world", "Hi there!"],
+    ["What is RKNN?", "This is a test."],
+]
 scores = model.predict(pairs)
-print(scores)  # e.g., [0.85, 0.12]
+print(scores)
+
+query = "Hi there!"
+documents = [
+    "What is going on?",
+    "I am 25 years old.",
+    "This is a test.",
+    "RKNN is a neural network toolkit.",
+]
+results = model.rank(query, documents)
+print(results)
 ```
 
 ### 3. Use RK-Transformers API Directly
@@ -245,7 +259,7 @@ from rktransformers import (
 from rktransformers.exporters.rknn.convert import export_rknn
 
 config = RKNNConfig(
-    model_id_or_path="sentence-transformers/all-MiniLM-L6-v2",
+    model_name_or_path="sentence-transformers/all-MiniLM-L6-v2",
     output_path="./my-exported-model",
     target_platform="rk3588",
     batch_size=1,

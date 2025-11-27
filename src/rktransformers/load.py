@@ -12,18 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextlib
 import json
-import os
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
+from sentence_transformers.util.file_io import is_sentence_transformer_model
 from transformers.configuration_utils import PretrainedConfig
 from transformers.utils import logging
-from transformers.utils.hub import cached_file
 
 from .utils.import_utils import is_sentence_transformers_available
-from .utils.modeling_utils import check_sentence_transformer_support
 
 logger = logging.get_logger(__name__)
 
@@ -48,14 +45,12 @@ def load_rknn_model(model_name_or_path: str, config: PretrainedConfig, task_name
             RKRTModelForSequenceClassification,
         )
 
-        # Map task names to their corresponding model classes
         task_to_model_mapping = {
             "feature-extraction": RKRTModelForFeatureExtraction,
             "fill-mask": RKRTModelForMaskedLM,
             "sequence-classification": RKRTModelForSequenceClassification,
         }
 
-        # Get the appropriate model class based on the task name
         if task_name not in task_to_model_mapping:
             supported_tasks = ", ".join(task_to_model_mapping.keys())
             raise ValueError(f"Unsupported task: {task_name}. Supported tasks: {supported_tasks}")
@@ -87,27 +82,24 @@ def _load_rknn_config(model_name_or_path: str, config: PretrainedConfig, **model
         **model_kwargs: Additional model loading arguments
 
     Returns:
-        tuple: (rknn_config dict, updated model_kwargs dict)
+        tuple: (rknn_config dict, updated config, updated model_kwargs dict)
     """
-    rknn_config = {}
-    rknn_json_path = None
-    cache_dir = model_kwargs.get("cache_dir")
+    from sentence_transformers.util.file_io import load_file_path
 
-    # Try to load rknn.json - works for both local and remote models
-    if os.path.isdir(model_name_or_path):
-        # Local directory
-        local_rknn_path = os.path.join(model_name_or_path, "rknn.json")
-        if os.path.exists(local_rknn_path):
-            rknn_json_path = local_rknn_path
-    else:
-        # Might be a remote model ID or already cached
-        with contextlib.suppress(Exception):
-            rknn_json_path = cached_file(
-                model_name_or_path,
-                filename="rknn.json",
-                cache_dir=cache_dir,
-                _raise_exceptions_for_missing_entries=False,
-            )
+    rknn_config = {}
+    cache_dir = model_kwargs.get("cache_dir")
+    token = model_kwargs.get("token")
+    revision = model_kwargs.get("revision")
+    local_files_only = model_kwargs.get("local_files_only", False)
+
+    rknn_json_path = load_file_path(
+        model_name_or_path,
+        "rknn.json",
+        token=token,
+        cache_folder=cache_dir,
+        revision=revision,
+        local_files_only=local_files_only,
+    )
 
     if rknn_json_path:
         try:
@@ -131,9 +123,9 @@ def _load_rknn_config(model_name_or_path: str, config: PretrainedConfig, **model
         if "max_seq_length" in rknn_config:
             config.max_position_embeddings = rknn_config["max_seq_length"]
         if "file_name" not in model_kwargs:
-            model_kwargs = {**model_kwargs, "file_name": file_name}
+            model_kwargs["file_name"] = file_name
 
-    return rknn_config, model_kwargs
+    return rknn_config, config, model_kwargs
 
 
 def patch_cross_encoder():
@@ -164,7 +156,7 @@ def patch_cross_encoder():
         Patched version of CrossEncoder._load_model to support RKNN backend.
         """
         if backend == "rknn":
-            rknn_config, model_kwargs = _load_rknn_config(model_name_or_path, config, **model_kwargs)
+            rknn_config, config, model_kwargs = _load_rknn_config(model_name_or_path, config, **model_kwargs)
             self._rknn_config = rknn_config
 
             self.model = load_rknn_model(
@@ -183,6 +175,85 @@ def patch_cross_encoder():
             )
 
     CrossEncoder._load_model = _load_model_patched
+
+    # Patch CrossEncoder.__init__ to apply tokenizer kwargs after initialization
+    original_init = CrossEncoder.__init__
+
+    def __init__patched(
+        self,
+        model_name_or_path: str,
+        num_labels: int | None = None,
+        max_length: int | None = None,
+        activation_fn: Any | None = None,
+        device: str | None = None,
+        cache_folder: str | None = None,
+        trust_remote_code: bool = False,
+        revision: str | None = None,
+        local_files_only: bool = False,
+        token: bool | str | None = None,
+        model_kwargs: dict | None = None,
+        tokenizer_kwargs: dict | None = None,
+        config_kwargs: dict | None = None,
+        model_card_data: Any | None = None,
+        backend: Literal["torch", "onnx", "openvino"] = "torch",
+    ) -> None:
+        """
+        Patched version of CrossEncoder.__init__ to apply RKNN-specific tokenizer configurations.
+
+        This method overrides the original __init__ to configure tokenizer_kwargs BEFORE
+        the tokenizer is initialized. For RKNN models, it pre-loads the config and rknn.json
+        to determine the correct max_length and padding settings, then passes these via
+        tokenizer_kwargs so the tokenizer is created correctly from the start.
+
+        Args:
+            model_name_or_path (str): The model name on Hugging Face or the path to a local model directory.
+            num_labels (int, optional): Number of labels for the classifier.
+            max_length (int, optional): Maximum sequence length.
+            activation_fn (callable, optional): Activation function.
+            device (str, optional): Device to use for computation.
+            cache_folder (str, optional): Directory to cache the model files.
+            trust_remote_code (bool): Whether to trust remote code.
+            revision (str, optional): Model revision to use.
+            local_files_only (bool): Whether to only use local files.
+            token (bool or str, optional): Hugging Face authentication token.
+            model_kwargs (dict, optional): Additional model loading arguments.
+            tokenizer_kwargs (dict, optional): Additional tokenizer loading arguments.
+            config_kwargs (dict, optional): Additional config loading arguments.
+            model_card_data (optional): Model card data.
+            backend (str): The backend to use for model loading (default: "torch").
+
+        Pre-processing:
+            - For RKNN backend, loads config and rknn.json to get max_position_embeddings
+            - Modifies tokenizer_kwargs to include padding="max_length" and model_max_length
+        """
+        original_init(
+            self,
+            model_name_or_path,
+            num_labels,
+            max_length,
+            activation_fn,
+            device,
+            cache_folder,
+            trust_remote_code,
+            revision,
+            local_files_only,
+            token,
+            model_kwargs,
+            tokenizer_kwargs,
+            config_kwargs,
+            model_card_data,
+            backend,
+        )
+
+        if not hasattr(self, "_rknn_config"):
+            return
+
+        if hasattr(self, "tokenizer") and self.tokenizer is not None:
+            self.tokenizer.padding = "max_length"
+            self.tokenizer.pad_to_max_length = True
+            self.tokenizer.model_max_length = self.config.max_position_embeddings
+
+    CrossEncoder.__init__ = __init__patched
 
     # Patch CrossEncoder.predict
     original_predict = CrossEncoder.predict
@@ -212,7 +283,6 @@ def patch_cross_encoder():
                 convert_to_tensor,
             )
 
-        import numpy as np
         import torch
         from tqdm.autonotebook import trange
 
@@ -223,42 +293,34 @@ def patch_cross_encoder():
 
         if show_progress_bar is None:
             show_progress_bar = (
-                logger.getEffectiveLevel() == logging.INFO or logger.getEffectiveLevel() == logging.DEBUG
+                logger.getEffectiveLevel() == logging.INFO or logger.getEffectiveLevel() == logging.DEBUG  # type: ignore
             )
 
         if activation_fn is not None:
             self.set_activation_fn(activation_fn, set_default=False)
 
-        pred_scores = []
-        self.eval()
-
         # Use RKNN batch size if defined
         if self._rknn_config and "batch_size" in self._rknn_config:
             rknn_batch_size = self._rknn_config["batch_size"]
             if batch_size != rknn_batch_size:
-                logger.warning_once(
+                logger.warning_once(  # type: ignore
                     f"Overriding batch_size {batch_size} with RKNN model's configured batch_size {rknn_batch_size}"
                 )
                 batch_size = rknn_batch_size
 
+        pred_scores = []
         for start_index in trange(0, len(sentences), batch_size, desc="Batches", disable=not show_progress_bar):
             batch = sentences[start_index : start_index + batch_size]
-
             # Force max_length padding for RKNN
             features = self.tokenizer(
                 batch,
-                padding="max_length",  # Changed from True
+                padding="max_length",
                 truncation=True,
                 return_tensors="pt",
-                max_length=self.max_length,  # Ensure max_length is used
+                max_length=self.max_length,
             )
-
-            # Move to device (RKRTModel handles this, but good to keep)
-            features.to(self.model.device)
-
-            with torch.no_grad():
-                model_predictions = self.model(**features, return_dict=True)
-                logits = self.activation_fn(model_predictions.logits)
+            model_predictions = self.model(**features, return_dict=True)
+            logits = self.activation_fn(model_predictions.logits)
 
             if apply_softmax and logits.ndim > 1:
                 logits = torch.nn.functional.softmax(logits, dim=1)
@@ -331,14 +393,12 @@ def patch_sentence_transformer():
             self.auto_model: The loaded RKNN model instance.
         """
         if backend == "rknn":
-            rknn_config, model_kwargs = _load_rknn_config(
+            rknn_config, config, model_kwargs = _load_rknn_config(
                 model_name_or_path, config, **{**model_kwargs, "cache_dir": cache_dir}
             )
             self._rknn_config = rknn_config
 
-            self._is_sentence_transformer = check_sentence_transformer_support(
-                model_name_or_path, model_name_or_path, cache_dir=cache_dir
-            )
+            self._is_sentence_transformer = is_sentence_transformer_model(model_name_or_path, cache_folder=cache_dir)
 
             self.auto_model = load_rknn_model(
                 model_name_or_path,
@@ -414,9 +474,8 @@ def patch_sentence_transformer():
         if not hasattr(self, "_rknn_config"):
             return
 
-        # Apply max_seq_length from rknn.json if available
         if self.auto_model and hasattr(self.auto_model, "config"):
-            self.max_seq_length = self.auto_model.config.max_position_embeddings
+            self.max_seq_length = self.auto_model.config.max_position_embeddings  # Set from RKNN config in _load_model
         if hasattr(self, "tokenizer") and self.tokenizer is not None:
             self.tokenizer.padding = "max_length"
             self.tokenizer.pad_to_max_length = True

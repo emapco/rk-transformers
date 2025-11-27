@@ -43,7 +43,6 @@ class TestCrossEncoderPatch:
         """Test loading CrossEncoder with backend='rknn'."""
         with (
             patch("rktransformers.load.load_rknn_model") as mock_load_rknn,
-            patch("rktransformers.load.cached_file") as mock_cached_file,
             patch("transformers.AutoConfig.from_pretrained") as mock_config_cls,
             patch("transformers.AutoTokenizer.from_pretrained") as mock_tokenizer_cls,
             patch("sentence_transformers.cross_encoder.CrossEncoder.load_file_path") as mock_load_file_path,
@@ -70,9 +69,6 @@ class TestCrossEncoderPatch:
             mock_rknn_model = MagicMock()
             mock_rknn_model.config = mock_config  # Link config
             mock_load_rknn.return_value = mock_rknn_model
-
-            # Mock cached_file to return a dummy rknn.json
-            mock_cached_file.return_value = None  # Simulate no rknn.json found via cached_file
 
             try:
                 model = CrossEncoder(
@@ -101,7 +97,6 @@ class TestCrossEncoderPatch:
             patch("transformers.AutoConfig.from_pretrained") as mock_config_cls,
             patch("sentence_transformers.cross_encoder.CrossEncoder.load_file_path") as mock_load_file_path,
         ):
-            # Mock AutoConfig
             mock_config = MagicMock()
             mock_config.num_labels = 1
             # Ensure no activation function is accidentally found
@@ -109,10 +104,8 @@ class TestCrossEncoderPatch:
             mock_config.sentence_transformers = {}
             mock_config_cls.return_value = mock_config
 
-            # Mock load_file_path
             mock_load_file_path.return_value = None
 
-            # Mock load_rknn_model
             mock_rknn_model = MagicMock()
             mock_rknn_model.config = mock_config  # Link config so it shares the deletions
             mock_rknn_model.config.max_position_embeddings = 128
@@ -120,7 +113,6 @@ class TestCrossEncoderPatch:
             mock_rknn_model.return_value = MagicMock(logits=torch.tensor([[0.5]]))  # Mock forward pass output
             mock_load_rknn.return_value = mock_rknn_model
 
-            # Mock AutoTokenizer
             mock_tokenizer = MagicMock()
             mock_tokenizer.model_max_length = 128
             # Return MockBatchEncoding which has .to() method
@@ -155,6 +147,8 @@ pytestmark = pytest.mark.skipif(
     reason="Skipping RKNN tests on non-Rockchip platform or missing RKNN Toolkit Lite library.",
 )
 
+INTEGRATION_CROSS_ENCODER_MODEL = "rk-transformers/ms-marco-MiniLM-L12-v2"
+
 
 @pytest.mark.slow
 @pytest.mark.manual
@@ -163,16 +157,49 @@ pytestmark = pytest.mark.skipif(
 class TestCrossEncoderPatchIntegration:
     """Integration tests for RKNN backend with CrossEncoder."""
 
-    def test_inference(self):
+    @pytest.mark.parametrize(
+        "model_id,file_name,batch_size",
+        [
+            (INTEGRATION_CROSS_ENCODER_MODEL, None, 1),
+            (INTEGRATION_CROSS_ENCODER_MODEL, "model_b4_s512.rknn", 1),
+            (INTEGRATION_CROSS_ENCODER_MODEL, "model_b4_s256.rknn", 1),
+            (INTEGRATION_CROSS_ENCODER_MODEL, None, 2),
+            (INTEGRATION_CROSS_ENCODER_MODEL, "model_b4_s512.rknn", 2),
+            (INTEGRATION_CROSS_ENCODER_MODEL, "model_b4_s256.rknn", 2),
+            (INTEGRATION_CROSS_ENCODER_MODEL, None, 3),
+            (INTEGRATION_CROSS_ENCODER_MODEL, "model_b4_s512.rknn", 3),
+            (INTEGRATION_CROSS_ENCODER_MODEL, "model_b4_s256.rknn", 3),
+            (INTEGRATION_CROSS_ENCODER_MODEL, None, 4),
+            (INTEGRATION_CROSS_ENCODER_MODEL, "model_b4_s512.rknn", 4),
+            (INTEGRATION_CROSS_ENCODER_MODEL, "model_b4_s256.rknn", 4),
+        ],
+    )
+    def test_inference_with_file_names_and_batch_sizes(self, model_id: str, file_name: str | None, batch_size: int):
+        """Test inference with RKNN backend on real models with different file names and batch sizes.
+
+        Args:
+            model_id: Hugging Face model identifier
+            file_name: Specific RKNN file to load (or None for default)
+            batch_size: Batch size to use for prediction
+        """
         from sentence_transformers import CrossEncoder
 
+        # Build model_kwargs with file_name if provided
+        model_kwargs = {"platform": "rk3588", "core_mask": "auto"}
+        if file_name:
+            model_kwargs["file_name"] = file_name
+
         model = CrossEncoder(
-            "rk-transformers/bge-reranker-base",
-            backend="rknn",
-            model_kwargs={"platform": "rk3588", "core_mask": "auto"},
+            model_id,
+            backend="rknn",  # type: ignore
+            model_kwargs=model_kwargs,
         )
 
-        pairs = [["How old are you?", "What is your age?"], ["Hello world", "Hi there!"]]
-        scores = model.predict(pairs)
-        assert len(scores) == 2, f"Expected 2 scores, got {len(scores)}"
+        pairs = [
+            ["How old are you?", "What is your age?"],
+            ["Hello world", "Hi there!"],
+            ["How old are you?", "What is your age?"],
+        ]
+        scores = model.predict(pairs, batch_size=batch_size)
+        assert len(scores) == len(pairs), f"Expected {len(pairs)} scores, got {len(scores)}"
         assert all(isinstance(score, (int, float, np.floating)) for score in scores), "Scores should be numeric"

@@ -38,7 +38,7 @@ class TestModelCardGenerator:
     def setup_method(self, temp_dir: Path):
         self.output_dir = str(temp_dir)
         self.config = RKNNConfig(
-            model_id_or_path="test-model",
+            model_name_or_path="test-model",
             output_path=os.path.join(self.output_dir, "model.rknn"),
             target_platform="rk3588",
         )
@@ -166,7 +166,7 @@ class TestModelCardGenerator:
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="test/model.onnx",
+            model_name_or_path="test/model.onnx",
             output_path=output_path,
             optimization=OptimizationConfig(optimization_level=2),
         )
@@ -201,7 +201,7 @@ class TestModelCardGenerator:
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path=str(model_path),
+            model_name_or_path=str(model_path),
             output_path=output_path,
             quantization=QuantizationConfig(
                 do_quantization=True,
@@ -227,11 +227,11 @@ class TestModelCardGenerator:
         # Create a dummy local model directory with ST config
         model_dir = temp_dir / "st_model"
         model_dir.mkdir()
-        (model_dir / "config_sentence_transformers.json").touch()
+        (model_dir / "modules.json").touch()
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path=str(model_dir),
+            model_name_or_path=str(model_dir),
             output_path=str(temp_dir / "st_model.rknn"),
         )
 
@@ -252,7 +252,7 @@ class TestModelCardGenerator:
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path=str(model_dir),
+            model_name_or_path=str(model_dir),
             output_path=str(temp_dir / "plain_model.rknn"),
         )
 
@@ -277,7 +277,7 @@ class TestModelCardGenerator:
         for task, expected_class in tasks.items():
             config = RKNNConfig(
                 target_platform="rk3588",
-                model_id_or_path="test/model.onnx",
+                model_name_or_path="test/model.onnx",
                 output_path=str(temp_dir / f"model_{task}.rknn"),
                 task=task,
             )
@@ -299,7 +299,7 @@ class TestModelCardGenerator:
         """Test usage example when model name is default model.rknn"""
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="test/model.onnx",
+            model_name_or_path="test/model.onnx",
             output_path=str(temp_dir / "model.rknn"),
         )
         generator = ModelCardGenerator()
@@ -348,7 +348,7 @@ This is the original model README.
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="test/model.onnx",
+            model_name_or_path="test/model.onnx",
             output_path=str(temp_dir / "model.rknn"),
         )
 
@@ -386,7 +386,7 @@ This is the original model README.
 
         config = RKNNConfig(
             target_platform="rk3588",
-            model_id_or_path="test/model.onnx",
+            model_name_or_path="test/model.onnx",
             output_path=str(temp_dir / "model.rknn"),
             quantization=QuantizationConfig(
                 do_quantization=True,

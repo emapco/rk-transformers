@@ -126,18 +126,20 @@ class TestModelCardGenerator:
         with open(os.path.join(rknn_dir, "model_w8a8.rknn"), "w") as f:
             f.write("dummy")
 
-        # Create rknn.json
+        # Create config.json with rknn key
         rknn_config = {
-            "model.rknn": {
-                "optimization": {"optimization_level": 0},
-                "quantization": {"do_quantization": False},
-            },
-            "rknn/model_w8a8.rknn": {
-                "optimization": {"optimization_level": 2},
-                "quantization": {"do_quantization": True, "quantized_dtype": "w8a8"},
-            },
+            "rknn": {
+                "model.rknn": {
+                    "optimization": {"optimization_level": 0},
+                    "quantization": {"do_quantization": False},
+                },
+                "rknn/model_w8a8.rknn": {
+                    "optimization": {"optimization_level": 2},
+                    "quantization": {"do_quantization": True, "quantized_dtype": "w8a8"},
+                },
+            }
         }
-        with open(os.path.join(self.output_dir, "rknn.json"), "w") as f:
+        with open(os.path.join(self.output_dir, "config.json"), "w") as f:
             json.dump(rknn_config, f)
 
         output_file = self.generator.generate(self.config, self.output_dir)

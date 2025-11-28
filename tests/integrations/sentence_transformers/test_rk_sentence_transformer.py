@@ -46,7 +46,7 @@ class TestRKSentenceTransformer:
         assert model.backend == "rknn"
         # Check if the underlying auto_model is an RKRTModel
         assert "RKRTModel" in model[0].auto_model.__class__.__name__
-        # Check if max_seq_length was updated from rknn.json
+        # Check if max_seq_length was updated from config.json
         assert model.max_seq_length == 32
 
     def test_inference(self, random_bert_model_path: Path) -> None:

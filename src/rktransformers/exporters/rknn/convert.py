@@ -37,7 +37,7 @@ from .utils import (
     load_model_config,
     prepare_dataset_for_quantization,
     resolve_hub_repo_id,
-    store_rknn_json,
+    update_model_config_with_rknn,
 )
 
 logger = logging.getLogger(__name__)
@@ -274,9 +274,9 @@ def export_rknn(config: RKNNConfig) -> None:
             clean_intermediate_onnx_files()
             raise ValueError("hub_model_id is required when push_to_hub is True")
         config.hub_model_id = resolve_hub_repo_id(config.hub_model_id, config.hub_token)
-    # rknn.json is required for model card generation
+    # updated config.json is required for model card generation
     if config.output_path:
-        store_rknn_json(config, model_dir, rknn_key)
+        update_model_config_with_rknn(config, model_dir, rknn_key)
     generator = ModelCardGenerator()
     readme_path = generator.generate(config, model_dir, base_model_id)
     if readme_path:

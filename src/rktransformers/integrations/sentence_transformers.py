@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 from typing import Any, Literal
 
 import numpy as np
@@ -72,60 +71,37 @@ def load_rknn_model(model_name_or_path: str, config: PretrainedConfig, task_name
     return model
 
 
-def _load_rknn_config(model_name_or_path: str, config: PretrainedConfig, **model_kwargs):
+def _load_rknn_config(
+    config: PretrainedConfig, **model_kwargs: dict[str, Any]
+) -> tuple[dict[str, Any] | None, dict[str, Any], dict[str, Any]]:
     """
-    Helper function to load RKNN configuration from rknn.json.
+    Helper function to load RKNN configuration from config.json.
 
     Args:
-        model_name_or_path (str): Model name or path
         config (PretrainedConfig): Model configuration
         **model_kwargs: Additional model loading arguments
 
     Returns:
         tuple: (rknn_config dict, updated config, updated model_kwargs dict)
     """
-    from sentence_transformers.util.file_io import load_file_path
+    if not hasattr(config, "rknn"):
+        return None, config, model_kwargs
 
-    rknn_config = {}
-    cache_dir = model_kwargs.get("cache_dir")
-    token = model_kwargs.get("token")
-    revision = model_kwargs.get("revision")
-    local_files_only = model_kwargs.get("local_files_only", False)
+    root_rknn_config = config.rknn
 
-    rknn_json_path = load_file_path(
-        model_name_or_path,
-        "rknn.json",
-        token=token,
-        cache_folder=cache_dir,
-        revision=revision,
-        local_files_only=local_files_only,
-    )
-
-    if rknn_json_path:
-        try:
-            with open(rknn_json_path) as f:
-                rknn_config = json.load(f)
-        except Exception as e:
-            logger.warning(f"Failed to load rknn.json: {e}")
-
-    # Determine which model file to use
     file_name = model_kwargs.get("file_name")
     if file_name is None:
         # Preference: model.rknn (unoptimized) -> first available in rknn/
-        if "model.rknn" in rknn_config:
+        if "model.rknn" in root_rknn_config:
             file_name = "model.rknn"
-        elif rknn_config:
-            file_name = next(iter(rknn_config))  # First key in rknn_config
+        elif root_rknn_config:
+            file_name = next(iter(root_rknn_config))
 
-    if file_name:
-        if file_name in rknn_config:
-            rknn_config = rknn_config[file_name]
-        if "max_seq_length" in rknn_config:
-            config.max_position_embeddings = rknn_config["max_seq_length"]
-        if "file_name" not in model_kwargs:
-            model_kwargs["file_name"] = file_name
+    rknn_config = root_rknn_config.get(file_name)
+    if "file_name" not in model_kwargs:
+        model_kwargs["file_name"] = file_name
 
-    return rknn_config, config, model_kwargs
+    return rknn_config, model_kwargs
 
 
 class RKCrossEncoder(CrossEncoder):
@@ -192,15 +168,15 @@ class RKCrossEncoder(CrossEncoder):
             model_card_data,
             backend,
         )
-
         # Post-init configuration for RKNN
-        if hasattr(self, "_rknn_config") and hasattr(self, "tokenizer") and self.tokenizer is not None:
-            self.tokenizer.padding = "max_length"
-            self.tokenizer.pad_to_max_length = True
-            if hasattr(self.config, "max_position_embeddings"):
-                self.tokenizer.model_max_length = self.config.max_position_embeddings
-            else:
-                self.tokenizer.model_max_length = self._rknn_config["max_seq_length"]
+        if (
+            hasattr(self, "_rknn_config")
+            and self._rknn_config is not None
+            and "max_seq_length" in self._rknn_config
+            and hasattr(self, "tokenizer")
+            and self.tokenizer is not None
+        ):
+            self.tokenizer.model_max_length = self._rknn_config["max_seq_length"]
 
     def _load_model(
         self,
@@ -215,9 +191,7 @@ class RKCrossEncoder(CrossEncoder):
         Overrides CrossEncoder._load_model to support 'rknn' backend.
         """
         if backend == "rknn":
-            rknn_config, config, model_kwargs = _load_rknn_config(model_name_or_path, config, **model_kwargs)
-            self._rknn_config = rknn_config
-
+            self._rknn_config, model_kwargs = _load_rknn_config(config, **model_kwargs)
             self.model = load_rknn_model(
                 model_name_or_path,
                 config=config,
@@ -270,11 +244,11 @@ class RKCrossEncoder(CrossEncoder):
             self.set_activation_fn(activation_fn, set_default=False)
 
         # Use RKNN batch size if defined
-        if self._rknn_config and "batch_size" in self._rknn_config:
+        if self._rknn_config is not None and "batch_size" in self._rknn_config:
             rknn_batch_size = self._rknn_config["batch_size"]
             if batch_size != rknn_batch_size:
                 logger.warning_once(  # type: ignore
-                    f"Overriding batch_size {batch_size} with RKNN model's configured batch_size {rknn_batch_size}"
+                    f"Overriding batch_size {batch_size} with RKNN model's configured batch_size {rknn_batch_size}."
                 )
                 batch_size = rknn_batch_size
 
@@ -357,15 +331,9 @@ class RKTransformer(Transformer):
             tokenizer_name_or_path,
             backend,
         )
-
         # Post-init configuration for RKNN
-        if hasattr(self, "_rknn_config"):
-            if self.auto_model and hasattr(self.auto_model, "config"):
-                self.max_seq_length = self.auto_model.config.max_position_embeddings
-            if hasattr(self, "tokenizer") and self.tokenizer is not None:
-                self.tokenizer.padding = "max_length"
-                self.tokenizer.pad_to_max_length = True
-                self.tokenizer.model_max_length = self.max_seq_length
+        if hasattr(self, "_rknn_config") and self._rknn_config is not None and "max_seq_length" in self._rknn_config:
+            self.max_seq_length = self._rknn_config["max_seq_length"]
 
     def _load_model(
         self,
@@ -391,12 +359,8 @@ class RKTransformer(Transformer):
                 - file_name (str, optional): Specific RKNN file to load.
         """
         if backend == "rknn":
-            rknn_config, config, model_kwargs = _load_rknn_config(
-                model_name_or_path, config, **{**model_kwargs, "cache_dir": cache_dir}
-            )
-            self._rknn_config = rknn_config
+            self._rknn_config, model_kwargs = _load_rknn_config(config, **{**model_kwargs, "cache_dir": cache_dir})
             self._is_sentence_transformer = is_sentence_transformer_model(model_name_or_path, cache_folder=cache_dir)
-
             self.auto_model = load_rknn_model(
                 model_name_or_path,
                 config=config,
@@ -568,7 +532,7 @@ class RKSentenceTransformer(SentenceTransformer):
                 rknn_config = module._rknn_config
                 break
 
-        if not rknn_config or "batch_size" not in rknn_config:
+        if rknn_config is None or "batch_size" not in rknn_config:
             kwargs["batch_size"] = batch_size
             return super().encode(sentences, **kwargs)
 

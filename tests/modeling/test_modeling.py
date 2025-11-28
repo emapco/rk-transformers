@@ -169,8 +169,8 @@ class TestRKRTModelFileName:
             (tmp_path / "rknn").mkdir()
             (tmp_path / "rknn" / "model_w8a8.rknn").touch()
 
-            # Create dummy rknn.json
-            with open(tmp_path / "rknn.json", "w") as f:
+            # Create dummy config.json
+            with open(tmp_path / "config.json", "w") as f:
                 f.write("{}")
 
             yield tmp_path

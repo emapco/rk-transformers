@@ -305,7 +305,7 @@ class RKNNConfig:
 
     def to_export_dict(self) -> dict[str, Any]:
         """
-        Convert complete config to dictionary for export/persistence in rknn.json.
+        Convert complete config to dictionary for export/persistence in config.json ("rknn" key).
         This includes ALL configuration parameters for reproducibility.
         """
         export_dict = {

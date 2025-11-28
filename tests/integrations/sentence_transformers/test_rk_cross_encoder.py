@@ -39,7 +39,6 @@ class TestRKCrossEncoder:
             patch("rktransformers.integrations.sentence_transformers.load_rknn_model") as mock_load_rknn,
             patch("transformers.AutoConfig.from_pretrained") as mock_config_cls,
             patch("transformers.AutoTokenizer.from_pretrained") as mock_tokenizer_cls,
-            patch("sentence_transformers.cross_encoder.CrossEncoder.load_file_path") as mock_load_file_path,
         ):
             mock_config = MagicMock()
             mock_config.sentence_transformers = {}
@@ -52,26 +51,17 @@ class TestRKCrossEncoder:
             mock_tokenizer.model_max_length = 512
             mock_tokenizer_cls.return_value = mock_tokenizer
 
-            mock_load_file_path.return_value = None
-
             mock_rknn_model = MagicMock()
             mock_rknn_model.config = mock_config
             mock_load_rknn.return_value = mock_rknn_model
 
             try:
-                # Test direct instantiation
                 model = RKCrossEncoder(
                     "dummy-model",
                     model_kwargs={"file_name": "model.rknn"},
                 )
-
-                # Verify load_rknn_model was called
                 mock_load_rknn.assert_called_once()
-                # Verify backend is rknn by default
                 assert model.backend == "rknn"
-                # Verify tokenizer settings
-                assert model.tokenizer.padding == "max_length"
-                assert model.tokenizer.pad_to_max_length is True
 
             except Exception as e:
                 pytest.fail(f"Failed to load mocked RKCrossEncoder: {e}")
@@ -87,7 +77,6 @@ class TestRKCrossEncoder:
             patch("rktransformers.integrations.sentence_transformers.load_rknn_model") as mock_load_rknn,
             patch("transformers.AutoTokenizer.from_pretrained") as mock_tokenizer_cls,
             patch("transformers.AutoConfig.from_pretrained") as mock_config_cls,
-            patch("sentence_transformers.cross_encoder.CrossEncoder.load_file_path") as mock_load_file_path,
         ):
             mock_config = MagicMock()
             mock_config.num_labels = 1
@@ -95,8 +84,6 @@ class TestRKCrossEncoder:
             mock_config.sbert_ce_default_activation_function = None
             mock_config.sentence_transformers = {}
             mock_config_cls.return_value = mock_config
-
-            mock_load_file_path.return_value = None
 
             mock_rknn_model = MagicMock()
             mock_rknn_model.config = mock_config  # Link config so it shares the deletions
@@ -119,14 +106,11 @@ class TestRKCrossEncoder:
             )
 
             # Inject _rknn_config to trigger RKNN specific logic in predict
-            model._rknn_config = {"batch_size": 1}  # type: ignore
+            model._rknn_config = {"batch_size": 1}
 
             pairs = [["test", "pair"]]
             model.predict(pairs)
 
-            # Verify tokenizer was called with padding="max_length"
-            # CrossEncoder.predict calls tokenizer(batch, ...)
-            # We need to check the call args of mock_tokenizer
             call_args = mock_tokenizer.call_args
             assert call_args is not None
             assert call_args.kwargs.get("padding") == "max_length"

@@ -41,24 +41,25 @@ class ModelCardGenerator:
 
         Args:
             output_dir: Directory containing RKNN models.
-            config: Optional RKNN config to use for inferring model details when rknn.json is missing.
+            config: Optional RKNN config to use for inferring model details when config.json is missing.
 
         Returns:
             List of RKNNConfig objects, one for each available RKNN model.
             Each config includes the relative path in output_path field.
         """
         available_configs = []
-        # Load rknn.json if it exists
-        rknn_json_path = os.path.join(output_dir, "rknn.json")
+        # Load config.json if it exists
+        config_path = os.path.join(output_dir, "config.json")
         rknn_configs = {}
-        if os.path.exists(rknn_json_path):
+        if os.path.exists(config_path):
             try:
-                with open(rknn_json_path) as f:
-                    rknn_configs = json.load(f)
+                with open(config_path) as f:
+                    model_config = json.load(f)
+                    rknn_configs = model_config.get("rknn", {})
             except Exception as e:
-                logger.warning(f"Failed to load rknn.json: {e}")
+                logger.warning(f"Failed to load config.json: {e}")
 
-        # If rknn.json exists, use it as the source of truth, but verify files exist
+        # If rknn configs exist in config.json, use them as the source of truth, but verify files exist
         if rknn_configs:
             for rel_path, model_config_dict in rknn_configs.items():
                 full_path = os.path.join(output_dir, rel_path)
@@ -72,8 +73,8 @@ class ModelCardGenerator:
                     except Exception as e:
                         logger.warning(f"Failed to load config for {rel_path}: {e}")
         else:
-            # Fallback to scanning directory if rknn.json is missing
-            logger.warning("rknn.json not found, falling back to directory scanning")
+            # Fallback to scanning directory if rknn config is missing
+            logger.warning("rknn config not found in config.json, falling back to directory scanning")
             # Check root directory
             for f in os.listdir(output_dir):
                 if f.endswith(".rknn"):

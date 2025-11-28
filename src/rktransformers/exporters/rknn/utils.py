@@ -299,7 +299,7 @@ def generate_rknn_output_path(
     Returns:
         A tuple containing:
             - output_path: Full path to the output RKNN file.
-            - rknn_key: Key to use in rknn.json (relative path).
+            - rknn_key: Key for the rknn config in config.json (relative path).
     """
     # Determine if batch_size and max_seq_length are non-default
     # Only include them in filename if they differ from defaults
@@ -337,7 +337,7 @@ def generate_rknn_output_path(
         os.makedirs(output_dir, exist_ok=True)
         filename = f"{model_name}{suffix}.rknn"
         output_path = os.path.join(output_dir, filename)
-        # Relative path for rknn.json key
+        # Relative path for the rknn config in config.json
         rknn_key = f"{sub_dir}/{filename}"
     else:
         output_dir = model_dir
@@ -351,37 +351,47 @@ def generate_rknn_output_path(
     return output_path, rknn_key
 
 
-def store_rknn_json(
+def update_model_config_with_rknn(
     config: RKNNConfig,
     model_dir: str,
     rknn_key: str,
 ) -> None:
     """
-    Generate or update the rknn.json file with the provided configuration.
+    Update the model's config.json with the RKNN configuration.
 
     Args:
         config: RKNN configuration object.
-        model_dir: Directory where the model should be saved.
-        rknn_key: Key to use in rknn.json (relative path to RKNN model weights).
+        model_dir: Directory where the model is saved.
+        rknn_key: Key to use for the RKNN config (relative path to RKNN model weights).
     """
-    rknn_json_path = os.path.join(model_dir, "rknn.json")
-    rknn_config = {rknn_key: config.to_export_dict()}
-
-    if os.path.exists(rknn_json_path):
-        try:
-            with open(rknn_json_path) as f:
-                existing_config = json.load(f)
-            existing_config.update(rknn_config)
-            rknn_config = existing_config
-        except Exception as e:
-            logger.warning(f"Failed to read existing rknn.json: {e}")
+    config_path = os.path.join(model_dir, "config.json")
+    rknn_export_dict = config.to_export_dict()
 
     try:
-        with open(rknn_json_path, "w") as f:
-            json.dump(rknn_config, f, indent=4)
-        logger.info(f"Exported configuration to {rknn_json_path}")
+        if os.path.exists(config_path):
+            with open(config_path) as f:
+                model_config = json.load(f)
+        else:
+            model_config = {}
+
+        # Update or create the "rknn" key
+        if "rknn" not in model_config:
+            model_config["rknn"] = {}
+
+        # If "rknn" exists but is not a dict (e.g. legacy format?), make it a dict
+        if not isinstance(model_config["rknn"], dict):
+            model_config["rknn"] = {}
+
+        model_config["rknn"][rknn_key] = rknn_export_dict
+        if "max_position_embeddings" in model_config:
+            model_config["max_position_embeddings"] = config.max_seq_length
+
+        with open(config_path, "w") as f:
+            json.dump(model_config, f, indent=2)
+        logger.info(f"Updated configuration in {config_path}")
+
     except Exception as e:
-        logger.warning(f"Failed to write rknn.json: {e}")
+        logger.warning(f"Failed to update config.json: {e}")
 
 
 def get_onnx_input_names(model_path: str) -> list[str] | None:

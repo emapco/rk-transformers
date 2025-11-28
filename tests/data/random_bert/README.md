@@ -72,4 +72,4 @@ model = RKRTModelForFeatureExtraction.from_pretrained(
 
 ## Configuration
 
-The full configuration for all exported RKNN models is available in the [rknn.json](./rknn.json) file.
+The full configuration for all exported RKNN models is available in the [config.json](./config.json) file.

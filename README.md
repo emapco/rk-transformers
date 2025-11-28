@@ -384,7 +384,7 @@ Hard methods:
 ### Runtime Loading Workflow
 
 1. **Model Discovery**: `RKRTModel.from_pretrained()` searches for `.rknn` files
-2. **Config Matching**: Reads `rknn.json` to match platform and constraints
+2. **Config Matching**: Reads the rknn config in `config.json` to match platform and constraints
 3. **Platform Validation**: Checks compatibility with `RKNNLite.list_support_target_platform()`
 4. **Runtime Init**: Loads model to NPU with specified core mask
 5. **Inference**: Runs forward pass with automatic input/output handling
@@ -434,28 +434,32 @@ graph TB
 
 ### Configuration Files
 
-#### `rknn.json`
+#### `config.json`
 
-Generated during export and stored alongside the model:
+The RKNN configuration is stored within the model's `config.json` file under the `"rknn"` key:
 
 ```json
 {
-  "model.rknn": {
-    "platform": "rk3588",
-    "batch_size": 1,
-    "max_seq_length": 128,
-    "model_input_names": ["input_ids", "attention_mask"],
-    "quantized_dtype": "w8a8",
-    "optimization_level": 3,
-    ...
-  },
-  "rknn/optimized.rknn": {
-    ...
+  "architectures": ["BertModel"],
+  ...
+  "rknn": {
+    "model.rknn": {
+      "platform": "rk3588",
+      "batch_size": 1,
+      "max_seq_length": 128,
+      "model_input_names": ["input_ids", "attention_mask"],
+      "quantized_dtype": "w8a8",
+      "optimization_level": 3,
+      ...
+    },
+    "rknn/optimized.rknn": {
+      ...
+    }
   }
 }
 ```
 
-The keys are relative paths to `.rknn` files, allowing multiple optimized variants per model.
+The keys in the `"rknn"` object are relative paths to `.rknn` files, allowing multiple optimized variants per model.
 
 ## 🤝 Contributing
 

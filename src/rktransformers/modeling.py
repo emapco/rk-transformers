@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import contextlib
-import json
 import os
 import re
 import shutil
@@ -772,45 +771,6 @@ class RKRTModel(
                 proxies=proxies,
             )
 
-        # Load rknn.json to get specific model configuration if available
-        model_rknn_config = None
-        rknn_json_path = None
-
-        # Try to load rknn.json using cached_file for both local and remote models
-        if os.path.isdir(model_id):
-            # Local directory
-            local_rknn_path = Path(model_id) / "rknn.json"
-            if local_rknn_path.exists():
-                rknn_json_path = local_rknn_path
-        else:
-            # Remote model or cached model - use cached_file
-            with contextlib.suppress(Exception):
-                rknn_json_path = cls._cached_file(
-                    model_id,
-                    filename="rknn.json",
-                    subfolder=subfolder,
-                    local_files_only=local_files_only,
-                    force_download=force_download,
-                    cache_dir=cache_dir,
-                    revision=revision,
-                    token=token,
-                    proxies=proxies,
-                )
-
-        if rknn_json_path:
-            try:
-                with open(rknn_json_path) as f:
-                    full_config = json.load(f)
-
-                # Match model filename to keys in rknn.json (e.g. "rknn/model.rknn")
-                filename = model_path.name
-                for key, conf in full_config.items():
-                    if key.endswith(filename):
-                        model_rknn_config = RKNNConfig.from_dict(conf)
-                        break
-            except Exception as e:
-                logger.warning(f"Failed to load rknn.json: {e}")
-
         resolved_config = cls._resolve_config(
             model_id,
             config,
@@ -822,6 +782,29 @@ class RKRTModel(
             trust_remote_code=trust_remote_code,
             proxies=proxies,
         )
+
+        # Try to get rknn config from the resolved config object
+        rknn_configs = {}
+        if hasattr(resolved_config, "rknn"):
+            rknn_configs = resolved_config.rknn
+        elif isinstance(resolved_config, dict) and "rknn" in resolved_config:
+            rknn_configs = resolved_config["rknn"]
+
+        model_rknn_config = None
+        if rknn_configs:
+            # Match model filename to keys in rknn config (e.g. "rknn/model.rknn")
+            filename = model_path.name
+            for key, conf in rknn_configs.items():
+                if key.endswith(filename):
+                    try:
+                        model_rknn_config = RKNNConfig.from_dict(conf)
+                        logger.info(f"Loaded RKNN config for {filename}")
+                        break
+                    except Exception as e:
+                        logger.warning(f"Failed to parse RKNN config for {key}: {e}")
+
+        if not model_rknn_config:
+            logger.warning("RKNN config not found in config.json. Use default batch_size=1 and max_seq_length=512.")
 
         return cls(
             model_id=model_id,
@@ -1219,6 +1202,9 @@ class RKRTModelForMultipleChoice(RKRTModel):
                 raise ValueError(
                     f"Number of choices in config ({expected_num_choices}) does not match input shape ({num_choices})"
                 )
+        else:
+            self.num_choices = num_choices
+            logger.warning_once("RKNN config not found in config.json. Using input_ids shape to infer num_choices.")  # type: ignore
 
         target_shape = (self.batch_size, num_choices, self.max_seq_length)
         use_torch, model_inputs, original_shape = self._prepare_text_inputs(

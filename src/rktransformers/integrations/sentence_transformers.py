@@ -39,15 +39,15 @@ def load_rknn_model(model_name_or_path: str, config: PretrainedConfig, task_name
         from sentence_transformers.backend.utils import _save_pretrained_wrapper
 
         from rktransformers.modeling import (
-            RKRTModelForFeatureExtraction,
-            RKRTModelForMaskedLM,
-            RKRTModelForSequenceClassification,
+            RKModelForFeatureExtraction,
+            RKModelForMaskedLM,
+            RKModelForSequenceClassification,
         )
 
         task_to_model_mapping = {
-            "feature-extraction": RKRTModelForFeatureExtraction,
-            "fill-mask": RKRTModelForMaskedLM,
-            "sequence-classification": RKRTModelForSequenceClassification,
+            "feature-extraction": RKModelForFeatureExtraction,
+            "fill-mask": RKModelForMaskedLM,
+            "sequence-classification": RKModelForSequenceClassification,
         }
 
         if task_name not in task_to_model_mapping:

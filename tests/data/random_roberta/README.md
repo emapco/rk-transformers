@@ -19,7 +19,7 @@ tags:
 - **Original Model:** [/home/manny/rk-transformers/tests/data/random_roberta](/home/manny/rk-transformers/tests/data/random_roberta)
 - **Target Platform:** rk3588
 - **rknn-toolkit2 Version:** 2.3.2
-- **rk-transformers Version:** 0.2.0
+- **rk-transformers Version:** 0.3.0
 
 ### Available Model Files
 
@@ -34,36 +34,30 @@ tags:
 
 ### Installation
 
-Install `rk-transformers` to use this model:
+Install `rk-transformers` with inference dependencies to use this model:
 
 ```bash
-pip install rk-transformers
+pip install rk-transformers[inference]
 ```
 
-#### RKTransformers API
+#### RK-Transformers API
 
 ```python
-from rktransformers import RKRTModelForFeatureExtraction
+from rktransformers import RKModelForFeatureExtraction
 from transformers import AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("random_roberta")
-model = RKRTModelForFeatureExtraction.from_pretrained(
+model = RKModelForFeatureExtraction.from_pretrained(
     "random_roberta",
     platform="rk3588",
     core_mask="auto",
     file_name="model_b1_s16.rknn"
 )
 
-inputs = tokenizer(
-    ["Sample text for encoding"],
-    padding="max_length",
-    max_length=16,
-    truncation=True,
-    return_tensors="np"
-)
-
+inputs = tokenizer("My name is Philipp and I live in Germany.", return_tensors="np")
 outputs = model(**inputs)
-print(outputs.shape)
+last_hidden_state = outputs.last_hidden_state
+print(last_hidden_state.shape)
 ```
 
 ## Configuration

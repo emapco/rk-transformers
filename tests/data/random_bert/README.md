@@ -40,11 +40,11 @@ pip install rk-transformers
 #### RKTransformers API
 
 ```python
-from rktransformers import RKRTModelForFeatureExtraction
+from rktransformers import RKModelForFeatureExtraction
 from transformers import AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("random_bert")
-model = RKRTModelForFeatureExtraction.from_pretrained(
+model = RKModelForFeatureExtraction.from_pretrained(
     "random_bert",
     platform="rk3588",
     core_mask="auto",
@@ -63,7 +63,7 @@ outputs = model(**inputs)
 print(outputs.shape)
 
 # Load specific optimized/quantized model file
-model = RKRTModelForFeatureExtraction.from_pretrained(
+model = RKModelForFeatureExtraction.from_pretrained(
     "random_bert",
     platform="rk3588",
     file_name="rknn/model_b1_s32_o3.rknn"

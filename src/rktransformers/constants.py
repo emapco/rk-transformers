@@ -119,12 +119,12 @@ SUPPORTED_TASK_CHOICES = get_args(SupportedTaskType)
 OpsetType = Literal[14, 15, 16, 17, 18, 19]  # ONNX opset 14 to 19 - sdpa added in 14 and rknn supports up to 19
 SUPPORTED_OPSETS = get_args(OpsetType)
 
-# Mapping from task to RKRTModel class name
+# Mapping from task to RKModel class name
 TASK_TO_RK_MODEL_CLASS = {
-    "fill-mask": "RKRTModelForMaskedLM",
-    "sequence-classification": "RKRTModelForSequenceClassification",
-    "feature-extraction": "RKRTModelForFeatureExtraction",
-    "question-answering": "RKRTModelForQuestionAnswering",
-    "token-classification": "RKRTModelForTokenClassification",
-    "multiple-choice": "RKRTModelForMultipleChoice",
+    "fill-mask": "RKModelForMaskedLM",
+    "sequence-classification": "RKModelForSequenceClassification",
+    "feature-extraction": "RKModelForFeatureExtraction",
+    "question-answering": "RKModelForQuestionAnswering",
+    "token-classification": "RKModelForTokenClassification",
+    "multiple-choice": "RKModelForMultipleChoice",
 }

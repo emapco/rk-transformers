@@ -203,11 +203,11 @@ model = RKCrossEncoder(
 ```python
 from transformers import AutoTokenizer
 
-from rktransformers import RKRTModelForFeatureExtraction
+from rktransformers import RKModelForFeatureExtraction
 
 # Load tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained("rk-transformers/all-MiniLM-L6-v2")
-model = RKRTModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
+model = RKModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
 
 # Tokenize and run inference
 inputs = tokenizer(
@@ -222,7 +222,7 @@ embeddings = outputs.last_hidden_state.mean(axis=1)  # Mean pooling
 print(embeddings.shape)  # (1, 384)
 
 # Load specific quantized model file
-model = RKRTModelForFeatureExtraction.from_pretrained(
+model = RKModelForFeatureExtraction.from_pretrained(
     "rk-transformers/all-MiniLM-L6-v2", platform="rk3588", file_name="rknn/model_w8a8.rknn"
 )
 ```
@@ -232,10 +232,10 @@ model = RKRTModelForFeatureExtraction.from_pretrained(
 ```python
 from transformers import pipeline
 
-from rktransformers import RKRTModelForMaskedLM
+from rktransformers import RKModelForMaskedLM
 
 # Load the RKNN model
-model = RKRTModelForMaskedLM.from_pretrained(
+model = RKModelForMaskedLM.from_pretrained(
     "rk-transformers/bert-base-uncased", platform="rk3588", file_name="rknn/model_w8a8.rknn"
 )
 
@@ -312,20 +312,20 @@ Rockchip SoCs with multiple NPU cores (like RK3588 with 3 cores or RK3576 with 2
 #### Python API - Inference
 
 ```python
-from rktransformers import RKRTModelForFeatureExtraction
+from rktransformers import RKModelForFeatureExtraction
 
 # Auto-select idle cores (recommended for production)
-model = RKRTModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
+model = RKModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
 
 # Use specific core for dedicated workloads
-model = RKRTModelForFeatureExtraction.from_pretrained(
+model = RKModelForFeatureExtraction.from_pretrained(
     "rk-transformers/all-MiniLM-L6-v2",
     platform="rk3588",
     core_mask="1",  # Reserve core 0 for other tasks
 )
 
 # Use all cores for maximum performance
-model = RKRTModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="all")
+model = RKModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="all")
 ```
 
 #### Sentence Transformers Integration
@@ -383,7 +383,7 @@ Hard methods:
 
 ### Runtime Loading Workflow
 
-1. **Model Discovery**: `RKRTModel.from_pretrained()` searches for `.rknn` files
+1. **Model Discovery**: `RKModel.from_pretrained()` searches for `.rknn` files
 2. **Config Matching**: Reads the rknn config in `config.json` to match platform and constraints
 3. **Platform Validation**: Checks compatibility with `RKNNLite.list_support_target_platform()`
 4. **Runtime Init**: Loads model to NPU with specified core mask
@@ -416,7 +416,7 @@ graph TB
         ST[Sentence Transformers]
         RKST[RKSentenceTransformer]
         RKCE[RKCrossEncoder]
-        RKRT[RKRTModel Classes]
+        RKRT[RKModel Classes]
         HFT[Hugging Face Transformers]
         
         ST -->|subclasses| RKST

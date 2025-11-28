@@ -224,7 +224,7 @@ class RKNNConfig:
         task: Task type for export (default: "auto").
             - 'auto': Uses optimum to detect the task based on model architecture.
                 - Can be used to export models supported by optimum and not rk-transformers runtime functionality,
-                  in which case, the user is responsible for developing inference code using rknn-toolkit-lite2 library or subclassing `rktransformers.RKRTModel`.
+                  in which case, the user is responsible for developing inference code using rknn-toolkit-lite2 library or subclassing `rktransformers.RKModel`.
             - *ForSequenceClassification -> sequence-classification
             - *ForMaskedLM -> fill-mask
             - Fallback: feature-extraction (e.g. BertModel)

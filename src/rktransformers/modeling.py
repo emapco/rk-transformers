@@ -84,7 +84,7 @@ else:
 
 _TOKENIZER_FOR_DOC = "AutoTokenizer"
 RKNN_MODEL_END_DOCSTRING = r"""
-    This model inherits from [`~rktransformers.modeling.RKRTModel`], check its documentation for the generic methods the
+    This model inherits from [`~rktransformers.modeling.RKModel`], check its documentation for the generic methods the
     library implements for all its model (such as downloading or saving).
 """
 
@@ -247,7 +247,7 @@ class RKNNRuntime:
         return rknn
 
 
-class RKRTModel(
+class RKModel(
     RKNNRuntime,
     PreTrainedModel,
     ModelHubMixin,
@@ -272,7 +272,7 @@ class RKRTModel(
         batch_size: int = 1,
     ) -> None:
         if config is None:
-            raise ValueError("A Hugging Face config is required to build an RKRT model.")
+            raise ValueError("A Hugging Face config is required to build an RKModel.")
 
         super().__init__(model_path=model_path, platform=platform, core_mask=core_mask, rknn_config=rknn_config)
         self.model_id = model_id
@@ -313,7 +313,7 @@ class RKRTModel(
             self.auto_model_class.register(AutoConfig, self.__class__)
 
     def __call__(self, *args, **kwargs):
-        """Make RKRTModel callable to work with Transformers/SentenceTransformers"""
+        """Make RKModel callable to work with Transformers/SentenceTransformers"""
         return self.forward(*args, **kwargs)
 
     def forward(
@@ -335,8 +335,8 @@ class RKRTModel(
         """Return the device on which the model is stored."""
         return torch.device("cpu")
 
-    def to(self, device: torch.device | str) -> "RKRTModel":
-        """No-op for RKRTModel. For compatibility with Hugging Face Transformers Pipelines."""
+    def to(self, device: torch.device | str) -> "RKModel":
+        """No-op for RKModel. For compatibility with Hugging Face Transformers Pipelines."""
         return self
 
     def _tensor_to_numpy(self, tensor: torch.Tensor | np.ndarray, dtype: np.dtype[Any]) -> np.ndarray:
@@ -447,7 +447,7 @@ class RKRTModel(
             Tuple of (use_torch, model_inputs, original_shape)
         """
         if input_ids is None:
-            raise ValueError("`input_ids` is required for RKRT text inference.")
+            raise ValueError("`input_ids` is required for RKModel text inference.")
 
         use_torch = isinstance(input_ids, torch.Tensor)
         original_shape = tuple(input_ids.shape)
@@ -708,7 +708,7 @@ class RKRTModel(
         # file options
         file_name: str | None = None,
         **model_kwargs: Any,
-    ) -> "RKRTModel":
+    ) -> "RKModel":
         cache_dir = cache_dir or HF_HUB_CACHE
 
         if is_offline_mode() and not local_files_only:
@@ -839,7 +839,7 @@ class RKRTModel(
         # file options
         file_name: str | None = None,
         **model_kwargs: Any,
-    ) -> "RKRTModel":
+    ) -> "RKModel":
         return super().from_pretrained(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             config=config,
@@ -880,7 +880,7 @@ FEATURE_EXTRACTION_EXAMPLE = r"""
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
-class RKRTModelForFeatureExtraction(RKRTModel):
+class RKModelForFeatureExtraction(RKModel):
     """RKNN model for feature extraction tasks."""
 
     auto_model_class = AutoModel
@@ -889,7 +889,7 @@ class RKRTModelForFeatureExtraction(RKRTModel):
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + FEATURE_EXTRACTION_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
-            model_class="RKRTModelForFeatureExtraction",
+            model_class="RKModelForFeatureExtraction",
             checkpoint="rk-transformers/all-MiniLM-L6-v2",
         )
     )
@@ -933,7 +933,7 @@ MASKED_LM_EXAMPLE = r"""
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
-class RKRTModelForMaskedLM(RKRTModel):
+class RKModelForMaskedLM(RKModel):
     """RKNN model for masked language modeling tasks."""
 
     auto_model_class = AutoModelForMaskedLM
@@ -942,7 +942,7 @@ class RKRTModelForMaskedLM(RKRTModel):
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + MASKED_LM_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
-            model_class="RKRTModelForMaskedLM",
+            model_class="RKModelForMaskedLM",
             checkpoint="rk-transformers/bert-base-uncased",
         )
     )
@@ -986,7 +986,7 @@ SEQUENCE_CLASSIFICATION_EXAMPLE = r"""
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
-class RKRTModelForSequenceClassification(RKRTModel):
+class RKModelForSequenceClassification(RKModel):
     """RKNN model for sequence classification/regression tasks."""
 
     auto_model_class = AutoModelForSequenceClassification
@@ -995,7 +995,7 @@ class RKRTModelForSequenceClassification(RKRTModel):
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + SEQUENCE_CLASSIFICATION_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
-            model_class="RKRTModelForSequenceClassification",
+            model_class="RKModelForSequenceClassification",
             checkpoint="rk-transformers/distilbert-base-uncased-finetuned-sst-2-english",
         )
     )
@@ -1043,7 +1043,7 @@ QUESTION_ANSWERING_EXAMPLE = r"""
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
-class RKRTModelForQuestionAnswering(RKRTModel):
+class RKModelForQuestionAnswering(RKModel):
     """RKNN Model with a QuestionAnsweringModelOutput for extractive question-answering tasks like SQuAD."""
 
     auto_model_class = AutoModelForQuestionAnswering
@@ -1052,7 +1052,7 @@ class RKRTModelForQuestionAnswering(RKRTModel):
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + QUESTION_ANSWERING_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
-            model_class="RKRTModelForQuestionAnswering",
+            model_class="RKModelForQuestionAnswering",
             checkpoint="rk-transformers/distilbert-base-cased-distilled-squad",
         )
     )
@@ -1097,7 +1097,7 @@ TOKEN_CLASSIFICATION_EXAMPLE = r"""
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
-class RKRTModelForTokenClassification(RKRTModel):
+class RKModelForTokenClassification(RKModel):
     """RKNN Model with a token classification head on top (a linear layer on top of the hidden-states output)
     e.g. for Named-Entity-Recognition (NER) tasks."""
 
@@ -1107,7 +1107,7 @@ class RKRTModelForTokenClassification(RKRTModel):
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + TOKEN_CLASSIFICATION_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
-            model_class="RKRTModelForTokenClassification",
+            model_class="RKModelForTokenClassification",
             checkpoint="rk-transformers/bert-base-NER",
         )
     )
@@ -1159,7 +1159,7 @@ MULTIPLE_CHOICE_EXAMPLE = r"""
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
-class RKRTModelForMultipleChoice(RKRTModel):
+class RKModelForMultipleChoice(RKModel):
     """RKNN Model with a multiple choice classification head
     on top (a linear layer on top of the pooled output and a softmax) e.g. for RocStories/SWAG tasks."""
 
@@ -1169,7 +1169,7 @@ class RKRTModelForMultipleChoice(RKRTModel):
         TEXT_INPUTS_DOCSTRING.format("batch_size, num_choices, sequence_length")
         + MULTIPLE_CHOICE_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
-            model_class="RKRTModelForMultipleChoice",
+            model_class="RKModelForMultipleChoice",
             checkpoint="rk-transformers/bert-base-uncased_SWAG",
         )
     )
@@ -1184,7 +1184,7 @@ class RKRTModelForMultipleChoice(RKRTModel):
     ) -> MultipleChoiceModelOutput | tuple[torch.Tensor | np.ndarray]:
         self._warn_on_unhandled_inputs(kwargs)
         if input_ids is None:
-            raise ValueError("`input_ids` is required for RKRT text inference.")
+            raise ValueError("`input_ids` is required for RKModel text inference.")
 
         # Multiple-choice inputs are 3D: [batch_size, num_choices, seq_len]
         if len(input_ids.shape) != 3:

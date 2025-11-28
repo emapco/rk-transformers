@@ -53,10 +53,7 @@ class TestLoadModelConfig:
 
     @patch("rktransformers.exporters.rknn.utils.AutoConfig")
     def test_load_model_config_auto_config(self, mock_auto_config: MagicMock) -> None:
-        mock_config_instance = MagicMock()
-        mock_config_instance.to_dict.return_value = {"architectures": ["BertForSequenceClassification"]}
-        mock_auto_config.from_pretrained.return_value = mock_config_instance
-
+        mock_auto_config.from_pretrained.return_value = {"architectures": ["BertForSequenceClassification"]}
         config = load_model_config("dummy-model-id")
         assert config == {"architectures": ["BertForSequenceClassification"]}
         mock_auto_config.from_pretrained.assert_called_with("dummy-model-id", trust_remote_code=True)
@@ -65,9 +62,9 @@ class TestLoadModelConfig:
     def test_load_model_config_failure(self, mock_auto_config: MagicMock) -> None:
         mock_auto_config.from_pretrained.side_effect = Exception("Failed to load")
 
-        # Should return empty dict on failure
+        # Should return None on failure
         config = load_model_config("non-existent-model")
-        assert config == {}
+        assert config is None
 
 
 class TestRKNNExporter:

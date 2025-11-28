@@ -21,12 +21,12 @@ import pytest
 from transformers import AutoTokenizer
 
 from rktransformers.modeling import (
-    RKRTModelForFeatureExtraction,
-    RKRTModelForMaskedLM,
-    RKRTModelForMultipleChoice,
-    RKRTModelForQuestionAnswering,
-    RKRTModelForSequenceClassification,
-    RKRTModelForTokenClassification,
+    RKModelForFeatureExtraction,
+    RKModelForMaskedLM,
+    RKModelForMultipleChoice,
+    RKModelForQuestionAnswering,
+    RKModelForSequenceClassification,
+    RKModelForTokenClassification,
 )
 from rktransformers.utils.env_utils import is_rockchip_platform
 from rktransformers.utils.import_utils import (
@@ -50,10 +50,10 @@ class TestRKModelingIntegration:
     """Integration tests for RKNN modeling classes."""
 
     def test_feature_extraction(self) -> None:
-        """Test RKRTModelForFeatureExtraction integration."""
+        """Test RKModelForFeatureExtraction integration."""
         checkpoint = "rk-transformers/all-MiniLM-L6-v2"
         tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-        model = RKRTModelForFeatureExtraction.from_pretrained(checkpoint)
+        model = RKModelForFeatureExtraction.from_pretrained(checkpoint)
 
         inputs = tokenizer("My name is Philipp and I live in Germany.", return_tensors="np")
         outputs = model(**inputs)
@@ -61,10 +61,10 @@ class TestRKModelingIntegration:
         assert last_hidden_state.shape == (1, 512, 384)  # (batch_size, seq_length, hidden_size)
 
     def test_masked_lm(self) -> None:
-        """Test RKRTModelForMaskedLM integration."""
+        """Test RKModelForMaskedLM integration."""
         checkpoint = "rk-transformers/bert-base-uncased"
         tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-        model = RKRTModelForMaskedLM.from_pretrained(checkpoint)
+        model = RKModelForMaskedLM.from_pretrained(checkpoint)
 
         inputs = tokenizer("The capital of France is [MASK].", return_tensors="np")
         outputs = model(**inputs)
@@ -72,10 +72,10 @@ class TestRKModelingIntegration:
         assert logits.shape == (1, 512, 30522)  # (batch_size, sequence_length, config.vocab_size)
 
     def test_sequence_classification(self) -> None:
-        """Test RKRTModelForSequenceClassification integration."""
+        """Test RKModelForSequenceClassification integration."""
         checkpoint = "rk-transformers/distilbert-base-uncased-finetuned-sst-2-english"
         tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-        model = RKRTModelForSequenceClassification.from_pretrained(checkpoint)
+        model = RKModelForSequenceClassification.from_pretrained(checkpoint)
 
         inputs = tokenizer("Hello, my dog is cute", return_tensors="np")
         outputs = model(**inputs)
@@ -83,10 +83,10 @@ class TestRKModelingIntegration:
         assert logits.shape == (1, 2)  # (batch_size, config.num_labels)
 
     def test_question_answering(self) -> None:
-        """Test RKRTModelForQuestionAnswering integration."""
+        """Test RKModelForQuestionAnswering integration."""
         checkpoint = "rk-transformers/distilbert-base-cased-distilled-squad"
         tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-        model = RKRTModelForQuestionAnswering.from_pretrained(checkpoint)
+        model = RKModelForQuestionAnswering.from_pretrained(checkpoint)
 
         question, text = "Who was Jim Henson?", "Jim Henson was a nice puppet"
         inputs = tokenizer(question, text, return_tensors="np")
@@ -97,10 +97,10 @@ class TestRKModelingIntegration:
         assert end_logits.shape == (1, 512)  # (batch_size, sequence_length)
 
     def test_token_classification(self) -> None:
-        """Test RKRTModelForTokenClassification integration."""
+        """Test RKModelForTokenClassification integration."""
         checkpoint = "rk-transformers/bert-base-NER"
         tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-        model = RKRTModelForTokenClassification.from_pretrained(checkpoint)
+        model = RKModelForTokenClassification.from_pretrained(checkpoint)
 
         inputs = tokenizer("My name is Philipp and I live in Germany.", return_tensors="np")
         outputs = model(**inputs)
@@ -108,10 +108,10 @@ class TestRKModelingIntegration:
         assert logits.shape == (1, 512, 9)  # (batch_size, sequence_length, config.num_labels)
 
     def test_multiple_choice(self) -> None:
-        """Test RKRTModelForMultipleChoice integration."""
+        """Test RKModelForMultipleChoice integration."""
         checkpoint = "rk-transformers/bert-base-uncased_SWAG"
         tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-        model = RKRTModelForMultipleChoice.from_pretrained(checkpoint)
+        model = RKModelForMultipleChoice.from_pretrained(checkpoint)
         # swag dataset and model use 4 choices
         prompt = "In Italy, pizza is served in slices."
         choice0 = "It is eaten with a fork and knife."

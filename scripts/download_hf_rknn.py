@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utility script to load RKNN2 models with rktransformers.RKRTModel."""
+"""Utility script to load RKNN2 models with rktransformers.RKModel."""
 
 import argparse
 import logging
@@ -24,14 +24,14 @@ from typing import Any
 from huggingface_hub.constants import HF_HUB_CACHE
 
 from rktransformers.constants import PLATFORM_CHOICES
-from rktransformers.modeling import RKRTModel
+from rktransformers.modeling import RKModel
 
 LOGGER = logging.getLogger("load_hf_rknn")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Download and initialize an RKNN model from the Hugging Face Hub using RKRTModel."
+        description="Download and initialize an RKNN model from the Hugging Face Hub using RKModel."
     )
     parser.add_argument(
         "--model-id",
@@ -96,7 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def load_model(args: argparse.Namespace) -> Any:
     LOGGER.info("Loading RKNN model from %s", args.model_id)
-    model = RKRTModel.from_pretrained(
+    model = RKModel.from_pretrained(
         pretrained_model_name_or_path=args.model_id,
         # rknn options
         platform=args.platform,

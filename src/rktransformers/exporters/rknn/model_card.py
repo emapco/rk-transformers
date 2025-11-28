@@ -17,7 +17,9 @@ import logging
 import os
 
 from huggingface_hub import ModelCard, ModelCardData
+from jinja2 import Template
 from sentence_transformers.util.file_io import is_sentence_transformer_model
+from transformers import PretrainedConfig
 
 from rktransformers.configuration import RKNNConfig
 from rktransformers.exporters.rknn.utils import get_file_size_str, get_rk_model_class
@@ -27,13 +29,29 @@ logger = logging.getLogger(__name__)
 
 
 class ModelCardGenerator:
-    """Generates a README.md model card for RKNN exported models."""
+    def __init__(
+        self,
+        template_path: str | None = None,
+        usage_templates_dir: str | None = None,
+        pretrained_config: PretrainedConfig | None = None,
+    ):
+        """
+        Generates a README.md model card for RKNN exported models.
 
-    def __init__(self, template_path: str | None = None):
+        Args:
+            template_path: Path to the template file to use for generating the model card.
+            usage_templates_dir: Directory containing usage templates for different RKNN model types.
+            pretrained_config: PretrainedConfig object containing model configuration.
+        """
         if template_path is None:
             template_path = os.path.join(os.path.dirname(__file__), "model_card_template.md")
 
+        if usage_templates_dir is None:
+            usage_templates_dir = os.path.join(os.path.dirname(__file__), "model_card_usage_templates")
+
         self.template_path = template_path
+        self.usage_templates_dir = usage_templates_dir
+        self.pretrained_config = pretrained_config
 
     def _get_available_models(self, output_dir: str, config: RKNNConfig | None = None) -> list[RKNNConfig]:
         """
@@ -318,7 +336,20 @@ class ModelCardGenerator:
             model_name_or_path=config.model_name_or_path, cache_folder=output_dir
         )
 
-        rk_model_class = get_rk_model_class(config.task)
+        rk_model_class = get_rk_model_class(config.task, self.pretrained_config)
+
+        usage_template = None
+        if self.usage_templates_dir:
+            template_file = os.path.join(self.usage_templates_dir, f"{rk_model_class}.md")
+            if os.path.exists(template_file):
+                try:
+                    with open(template_file) as f:
+                        usage_template = f.read()
+                except Exception as e:
+                    logger.warning(f"Failed to load usage template from {template_file}: {e}")
+
+        if not usage_template:
+            logger.warning(f"No usage template found for {rk_model_class}")
 
         available_model_configs = self._get_available_models(output_dir, config)
         available_model_configs.sort(key=lambda x: x.output_path)  # type: ignore
@@ -361,6 +392,20 @@ class ModelCardGenerator:
             config, default_model_path, model_name
         )
 
+        # Render the usage template
+        usage_example = None
+        if usage_template:
+            usage_context = {
+                "rk_model_class": rk_model_class,
+                "tokenizer_path": tokenizer_path,
+                "example_model_path": example_model_path,
+                "target_platform": config.target_platform,
+                "example_file_name": example_file_name,
+                "optimized_model_path": optimized_model_path,
+                "max_seq_length": config.max_seq_length,
+            }
+            usage_example = Template(usage_template).render(**usage_context)
+
         available_models = [
             {
                 "path": model_config.output_path,
@@ -396,12 +441,8 @@ class ModelCardGenerator:
             tokenizer_path=tokenizer_path,
             available_models=available_models,
             max_seq_length=config.max_seq_length,
+            usage_example=usage_example,
         )
-
-        if getattr(rknn_card.data, "eval_results", None) is not None:
-            rknn_card.data.eval_results = None
-        if getattr(rknn_card.data, "model_index", None) is not None:
-            rknn_card.data.model_index = None
 
         readme_path = os.path.join(output_dir, "README.md")
 

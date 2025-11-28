@@ -28,10 +28,10 @@ from transformers import AutoConfig, PretrainedConfig
 from rktransformers.configuration import RKNNConfig
 from rktransformers.constants import PlatformType
 from rktransformers.modeling import (
-    RKRTModel,
-    RKRTModelForMultipleChoice,
-    RKRTModelForQuestionAnswering,
-    RKRTModelForTokenClassification,
+    RKModel,
+    RKModelForMultipleChoice,
+    RKModelForQuestionAnswering,
+    RKModelForTokenClassification,
 )
 
 
@@ -50,7 +50,7 @@ class TestRKNNPlatformCheck:
             [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
         )
 
-        model = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3588")
+        model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3588")
         assert model.rknn is not None
 
         supported = model.list_model_compatible_platform()
@@ -71,7 +71,7 @@ class TestRKNNPlatformCheck:
         )
 
         with pytest.raises(RuntimeError, match="not compatible"):
-            RKRTModel(
+            RKModel(
                 config=pretrained_config,
                 model_path=dummy_rknn_file,
                 platform="rk3566",  # Not in supported list
@@ -89,7 +89,7 @@ class TestRKNNPlatformCheck:
             [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
         )
 
-        model = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3588")
+        model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3588")
         assert model.rknn is not None
 
     @pytest.mark.parametrize(
@@ -118,13 +118,11 @@ class TestRKNNPlatformCheck:
         )
 
         if should_pass:
-            model = RKRTModel(
-                config=pretrained_config, model_path=dummy_rknn_file, platform=cast(PlatformType, platform)
-            )
+            model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, platform=cast(PlatformType, platform))
             assert model.rknn is not None
         else:
             with pytest.raises(RuntimeError, match="not compatible"):
-                RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform=cast(PlatformType, platform))
+                RKModel(config=pretrained_config, model_path=dummy_rknn_file, platform=cast(PlatformType, platform))
 
     @patch("rktransformers.modeling.RKNNLite")
     def test_multiple_supported_platforms(
@@ -141,17 +139,17 @@ class TestRKNNPlatformCheck:
             ]
         )
 
-        model1 = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3588")
+        model1 = RKModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3588")
         assert model1.rknn is not None
 
-        model2 = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3568")
+        model2 = RKModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3568")
         assert model2.rknn is not None
 
         with pytest.raises(RuntimeError, match="not compatible"):
-            RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3566")
+            RKModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3566")
 
 
-class TestRKRTModelFileName:
+class TestRKModelFileName:
     @pytest.fixture
     def temp_model_dir(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -184,7 +182,7 @@ class TestRKRTModelFileName:
         mock_rknn_lite.return_value = mock_rknn
 
         # Test loading specific file
-        RKRTModel.from_pretrained(temp_model_dir, file_name="model_quantized.rknn", platform="rk3588")
+        RKModel.from_pretrained(temp_model_dir, file_name="model_quantized.rknn", platform="rk3588")
 
         # Verify correct file was loaded
         expected_path = (temp_model_dir / "model_quantized.rknn").as_posix()
@@ -199,7 +197,7 @@ class TestRKRTModelFileName:
         mock_rknn_lite.return_value = mock_rknn
 
         # Test loading default (should find model.rknn or first available)
-        RKRTModel.from_pretrained(temp_model_dir, platform="rk3588")
+        RKModel.from_pretrained(temp_model_dir, platform="rk3588")
 
         # Verify it loaded one of the valid files (preference is usually model.rknn)
         # Based on _infer_file_path logic, it prefers RKNN_WEIGHTS_NAME ("model.rknn")
@@ -215,7 +213,7 @@ class TestRKRTModelFileName:
         mock_rknn_lite.return_value = mock_rknn
 
         # Test loading quantized model from subdirectory
-        RKRTModel.from_pretrained(temp_model_dir, file_name="rknn/model_w8a8.rknn", platform="rk3588")
+        RKModel.from_pretrained(temp_model_dir, file_name="rknn/model_w8a8.rknn", platform="rk3588")
 
         # Verify correct file was loaded
         expected_path = (temp_model_dir / "rknn" / "model_w8a8.rknn").as_posix()
@@ -229,17 +227,17 @@ class TestRKRTModelFileName:
 
         # Test loading non-existent file
         with pytest.raises((FileNotFoundError, OSError)):
-            RKRTModel.from_pretrained(temp_model_dir, file_name="non_existent.rknn", platform="rk3588")
+            RKModel.from_pretrained(temp_model_dir, file_name="non_existent.rknn", platform="rk3588")
 
 
-class TestRKRTModelingTasks:
+class TestRKModelingTasks:
     """Test RKNN model task-specific classes."""
 
     @patch("rktransformers.modeling.RKNNLite")
     def test_question_answering(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
-        """Test RKRTModelForQuestionAnswering forward pass."""
+        """Test RKModelForQuestionAnswering forward pass."""
         mock_rknn = MagicMock()
         mock_rknn.load_rknn.return_value = 0
         mock_rknn.init_runtime.return_value = 0
@@ -252,7 +250,7 @@ class TestRKRTModelingTasks:
         ]
         mock_rknn_lite.return_value = mock_rknn
 
-        model = RKRTModelForQuestionAnswering(config=pretrained_config, model_path=dummy_rknn_file)
+        model = RKModelForQuestionAnswering(config=pretrained_config, model_path=dummy_rknn_file)
 
         input_ids = torch.randint(0, 1000, (batch_size, seq_len))
         attention_mask = torch.ones((batch_size, seq_len))
@@ -267,7 +265,7 @@ class TestRKRTModelingTasks:
     def test_token_classification(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
-        """Test RKRTModelForTokenClassification forward pass."""
+        """Test RKModelForTokenClassification forward pass."""
         mock_rknn = MagicMock()
         mock_rknn.load_rknn.return_value = 0
         mock_rknn.init_runtime.return_value = 0
@@ -278,7 +276,7 @@ class TestRKRTModelingTasks:
         mock_rknn.inference.return_value = [np.random.randn(batch_size, seq_len, num_labels).astype(np.float32)]
         mock_rknn_lite.return_value = mock_rknn
 
-        model = RKRTModelForTokenClassification(config=pretrained_config, model_path=dummy_rknn_file)
+        model = RKModelForTokenClassification(config=pretrained_config, model_path=dummy_rknn_file)
 
         input_ids = torch.randint(0, 1000, (batch_size, seq_len))
         attention_mask = torch.ones((batch_size, seq_len))
@@ -291,7 +289,7 @@ class TestRKRTModelingTasks:
     def test_multiple_choice(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
-        """Test RKRTModelForMultipleChoice forward pass."""
+        """Test RKModelForMultipleChoice forward pass."""
         mock_rknn = MagicMock()
         mock_rknn.load_rknn.return_value = 0
         mock_rknn.init_runtime.return_value = 0
@@ -305,9 +303,7 @@ class TestRKRTModelingTasks:
 
         # Create config with task_kwargs
         rknn_config = RKNNConfig(task_kwargs={"num_choices": num_choices})
-        model = RKRTModelForMultipleChoice(
-            config=pretrained_config, model_path=dummy_rknn_file, rknn_config=rknn_config
-        )
+        model = RKModelForMultipleChoice(config=pretrained_config, model_path=dummy_rknn_file, rknn_config=rknn_config)
 
         input_ids = torch.randint(0, 1000, (batch_size, num_choices, seq_len))
         attention_mask = torch.ones((batch_size, num_choices, seq_len))
@@ -330,7 +326,7 @@ class TestInputPaddingMethods:
         mock_rknn.init_runtime.return_value = 0
         mock_rknn_lite.return_value = mock_rknn
 
-        model = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
+        model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
 
         # Test with torch tensor
         input_tensor = torch.randint(0, 1000, (2, 64))
@@ -352,7 +348,7 @@ class TestInputPaddingMethods:
         mock_rknn.init_runtime.return_value = 0
         mock_rknn_lite.return_value = mock_rknn
 
-        model = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
+        model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
 
         # Test with torch tensor
         input_tensor = torch.randint(0, 1000, (2, 4, 64))
@@ -379,7 +375,7 @@ class TestInputPaddingMethods:
         mock_rknn.init_runtime.return_value = 0
         mock_rknn_lite.return_value = mock_rknn
 
-        model = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
+        model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
 
         # Input already at target size
         input_tensor = torch.randint(0, 1000, (4, 128))
@@ -397,7 +393,7 @@ class TestInputPaddingMethods:
         mock_rknn.init_runtime.return_value = 0
         mock_rknn_lite.return_value = mock_rknn
 
-        model = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
+        model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
 
         input_ids = torch.randint(0, 1000, (2, 64))
         attention_mask = torch.ones((2, 64))
@@ -419,7 +415,7 @@ class TestInputPaddingMethods:
         mock_rknn.init_runtime.return_value = 0
         mock_rknn_lite.return_value = mock_rknn
 
-        model = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
+        model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
 
         input_ids = torch.randint(0, 1000, (2, 4, 64))
         attention_mask = torch.ones((2, 4, 64))
@@ -444,7 +440,7 @@ class TestInputPaddingMethods:
 
         # Create config with token types
         config = PretrainedConfig(model_type="rknn_model", type_vocab_size=2)
-        model = RKRTModel(config=config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
+        model = RKModel(config=config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
 
         input_ids = torch.randint(0, 1000, (2, 64))
         attention_mask = torch.ones((2, 64))
@@ -468,7 +464,7 @@ class TestInputPaddingMethods:
         mock_rknn.init_runtime.return_value = 0
         mock_rknn_lite.return_value = mock_rknn
 
-        model = RKRTModel(config=pretrained_config, model_path=dummy_rknn_file)
+        model = RKModel(config=pretrained_config, model_path=dummy_rknn_file)
 
         with pytest.raises(ValueError, match="`input_ids` is required"):
             model._prepare_text_inputs(None, None, None)

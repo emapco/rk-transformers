@@ -25,7 +25,7 @@ from rktransformers.integrations.sentence_transformers import load_rknn_model
 class TestLoadRKNNModel:
     """Tests for load_rknn_model function."""
 
-    @patch("rktransformers.modeling.RKRTModelForFeatureExtraction.from_pretrained")
+    @patch("rktransformers.modeling.RKModelForFeatureExtraction.from_pretrained")
     def test_load_feature_extraction(
         self, mock_from_pretrained: MagicMock, pretrained_config: PretrainedConfig
     ) -> None:
@@ -38,7 +38,7 @@ class TestLoadRKNNModel:
         mock_from_pretrained.assert_called_once_with("test-model", config=pretrained_config)
         assert model == mock_from_pretrained.return_value
 
-    @patch("rktransformers.modeling.RKRTModelForMaskedLM.from_pretrained")
+    @patch("rktransformers.modeling.RKModelForMaskedLM.from_pretrained")
     def test_load_masked_lm(self, mock_from_pretrained: MagicMock, pretrained_config: PretrainedConfig) -> None:
         """Test loading model for masked language modeling task."""
         mock_model = MagicMock()
@@ -49,7 +49,7 @@ class TestLoadRKNNModel:
         mock_from_pretrained.assert_called_once_with("test-model", config=pretrained_config)
         assert model == mock_from_pretrained.return_value
 
-    @patch("rktransformers.modeling.RKRTModelForSequenceClassification.from_pretrained")
+    @patch("rktransformers.modeling.RKModelForSequenceClassification.from_pretrained")
     def test_load_sequence_classification(
         self, mock_from_pretrained: MagicMock, pretrained_config: PretrainedConfig
     ) -> None:
@@ -70,12 +70,12 @@ class TestLoadRKNNModel:
     @pytest.mark.parametrize(
         "task,expected_model_class",
         [
-            ("feature-extraction", "RKRTModelForFeatureExtraction"),
-            ("fill-mask", "RKRTModelForMaskedLM"),
-            ("sequence-classification", "RKRTModelForSequenceClassification"),
+            ("feature-extraction", "RKModelForFeatureExtraction"),
+            ("fill-mask", "RKModelForMaskedLM"),
+            ("sequence-classification", "RKModelForSequenceClassification"),
         ],
     )
-    def test_task_to_model_mapping(
+    def test_sentence_transformers_supported_task_to_model_mapping(
         self, task: str, expected_model_class: str, pretrained_config: PretrainedConfig
     ) -> None:
         """Test that different tasks load the correct model class."""

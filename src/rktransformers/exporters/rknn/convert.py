@@ -153,11 +153,11 @@ def export_rknn(config: RKNNConfig) -> None:
     # Auto-detect max_seq_length if not provided
     is_user_specified_seq_len = config.max_seq_length is not None
     if config.max_seq_length is None:
-        config.max_seq_length = model_config.get("max_position_embeddings", DEFAULT_MAX_SEQ_LENGTH)
+        config.max_seq_length = getattr(model_config, "max_position_embeddings", DEFAULT_MAX_SEQ_LENGTH)
         logger.info(f"Auto-detected max_seq_length: {config.max_seq_length}")
     # Auto-detect type_vocab_size if not provided
     if config.type_vocab_size is None:
-        config.type_vocab_size = model_config.get("type_vocab_size")
+        config.type_vocab_size = getattr(model_config, "type_vocab_size", None)
         if config.type_vocab_size:
             logger.info(f"Auto-detected type_vocab_size: {config.type_vocab_size}")
 
@@ -276,8 +276,8 @@ def export_rknn(config: RKNNConfig) -> None:
         config.hub_model_id = resolve_hub_repo_id(config.hub_model_id, config.hub_token)
     # updated config.json is required for model card generation
     if config.output_path:
-        update_model_config_with_rknn(config, model_dir, rknn_key)
-    generator = ModelCardGenerator()
+        update_model_config_with_rknn(config, model_dir, rknn_key, model_config)
+    generator = ModelCardGenerator(pretrained_config=model_config)
     readme_path = generator.generate(config, model_dir, base_model_id)
     if readme_path:
         logger.info(f"Generated model card at {readme_path}")

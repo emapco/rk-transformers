@@ -72,8 +72,8 @@ def load_rknn_model(model_name_or_path: str, config: PretrainedConfig, task_name
 
 
 def _load_rknn_config(
-    config: PretrainedConfig, **model_kwargs: dict[str, Any]
-) -> tuple[dict[str, Any] | None, dict[str, Any], dict[str, Any]]:
+    config: PretrainedConfig, model_kwargs: dict[str, Any]
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """
     Helper function to load RKNN configuration from config.json.
 
@@ -85,7 +85,7 @@ def _load_rknn_config(
         tuple: (rknn_config dict, updated config, updated model_kwargs dict)
     """
     if not hasattr(config, "rknn"):
-        return None, config, model_kwargs
+        return None, model_kwargs
 
     root_rknn_config = config.rknn
 
@@ -166,7 +166,7 @@ class RKCrossEncoder(CrossEncoder):
             tokenizer_kwargs,
             config_kwargs,
             model_card_data,
-            backend,
+            backend,  # type: ignore
         )
         # Post-init configuration for RKNN
         if (

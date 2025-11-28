@@ -74,7 +74,7 @@ logger = logging.get_logger(__name__)
 if is_rknn_toolkit_lite_available():
     from rknnlite.api import RKNNLite  # pyright: ignore[reportMissingImports]
 elif is_rknn_toolkit_available():
-    # Fallback to RKNN if RKNNLite is not available. RKNN is a superset of RKNNLite.
+    # Fallback to RKNN if RKNNLite is not available. RKNN shares similar functionality as RKNNLite.
     from rknn.api import RKNN as RKNNLite  # pyright: ignore[reportMissingImports]
 else:
     logger.error("RKNN Toolkit Lite is not installed. Please install it via pip:")

@@ -393,8 +393,6 @@ def update_model_config_with_rknn(
         if not isinstance(model_config_dict["rknn"], dict):
             model_config_dict["rknn"] = {}
         model_config_dict["rknn"][rknn_key] = rknn_export_dict
-        if "max_position_embeddings" in model_config_dict:
-            model_config_dict["max_position_embeddings"] = rknn_config.max_seq_length
 
         config.update(model_config_dict)
         config.save_pretrained(model_dir)

@@ -102,13 +102,15 @@ Development dependencies include:
 ### 1. Export a Model to RKNN
 
 ```bash
+# Display help message with available options
+rk-transformers-cli export -h 
+
 # Export a Sentence Transformer model from Hugging Face Hub (float16)
 rk-transformers-cli export \
   --model sentence-transformers/all-MiniLM-L6-v2 \
   --platform rk3588 \
   --flash-attention \
-  --optimization-level 3 \
-  --opset 19  # Default is 18
+  --optimization-level 3
 
 # Export with custom dataset for quantization (int8)
 rk-transformers-cli export \

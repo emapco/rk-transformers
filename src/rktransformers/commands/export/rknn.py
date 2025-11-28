@@ -65,6 +65,14 @@ def parse_args_rknn(parser: ArgumentParser):
         "Note: large sequence length (4096) causes the RKNN export to segmentation fault.",
     )
     optional_group.add_argument(
+        "--task-kwargs",
+        type=str,
+        default=None,
+        help="Task-specific keyword arguments for ONNX export as comma-separated key=value pairs. "
+        "Example: For multiple-choice tasks, use 'num_choices=4'. "
+        "Multiple arguments can be specified like 'num_choices=4,other_param=value'.",
+    )
+    optional_group.add_argument(
         "--model-inputs",
         type=str,
         default=None,
@@ -273,6 +281,23 @@ class RKNNExportCommand(BaseRKNNCLICommand):
         if self.args.model_inputs:
             model_input_names = [name.strip() for name in self.args.model_inputs.split(",")]
 
+        # Parse task kwargs if provided (format: key1=value1,key2=value2)
+        task_kwargs = None
+        if self.args.task_kwargs:
+            task_kwargs = {}
+            for pair in self.args.task_kwargs.split(","):
+                if "=" not in pair:
+                    print(f"Warning: Ignoring invalid task kwarg '{pair}' (expected format: key=value)")
+                    continue
+                key, value = pair.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                # Try to convert to int, otherwise keep as string
+                try:
+                    task_kwargs[key] = int(value)
+                except ValueError:
+                    task_kwargs[key] = value
+
         # Parse dataset parameters if provided
         dataset_split = None
         if self.args.dataset_split:
@@ -313,6 +338,7 @@ class RKNNExportCommand(BaseRKNNCLICommand):
             output_path=str(self.args.output) if self.args.output else None,
             batch_size=self.args.batch_size,
             max_seq_length=self.args.max_seq_length,
+            task_kwargs=task_kwargs,
             push_to_hub=self.args.push_to_hub,
             hub_model_id=self.args.model_id,
             hub_token=self.args.token,

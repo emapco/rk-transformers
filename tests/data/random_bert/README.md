@@ -19,7 +19,7 @@ tags:
 - **Original Model:** [/home/manny/rk-transformers/tests/data/random_bert](/home/manny/rk-transformers/tests/data/random_bert)
 - **Target Platform:** rk3588
 - **rknn-toolkit2 Version:** 2.3.2
-- **rk-transformers Version:** 0.1.0
+- **rk-transformers Version:** 0.2.0
 
 ### Available Model Files
 

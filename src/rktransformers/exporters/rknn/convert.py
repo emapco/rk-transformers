@@ -121,22 +121,25 @@ def export_rknn(config: RKNNConfig) -> None:
 
             # Export to ONNX using Optimum's main_export
             # Use batch_size and max_seq_length from config for input shapes
-            main_export(
-                model_name_or_path=config.model_name_or_path,
-                output=output_dir,
-                task=config.task,  # onnx resolves "auto" internally
-                opset=config.opset,
-                do_validation=False,
-                no_post_process=True,
-                batch_size=config.batch_size,
-                sequence_length=config.max_seq_length or DEFAULT_MAX_SEQ_LENGTH,
-            )
+            export_kwargs = {
+                "model_name_or_path": config.model_name_or_path,
+                "output": output_dir,
+                "task": config.task,  # onnx resolves "auto" internally
+                "opset": config.opset,
+                "do_validation": False,
+                "no_post_process": True,
+                "batch_size": config.batch_size,
+                "sequence_length": config.max_seq_length or DEFAULT_MAX_SEQ_LENGTH,
+            }
+            if config.task_kwargs:
+                export_kwargs.update(config.task_kwargs)
+
+            main_export(**export_kwargs)
 
             # main_export creates model.onnx in the output directory
             onnx_model_path = os.path.join(output_dir, "model.onnx")
             logger.info(f"Successfully exported to {onnx_model_path}")
-            # Use output_dir for config loading (contains config.json)
-            model_config_path = output_dir
+            model_config_path = output_dir  # for config loading (contains config.json)
 
         except Exception as e:
             raise RuntimeError(f"Failed to export model from Hub: {e}") from e
@@ -190,7 +193,13 @@ def export_rknn(config: RKNNConfig) -> None:
 
         config.model_input_names = inputs
 
-    input_size_list: list[list[int]] = [[batch_size, sequence_length]] * len(inputs)
+    # For multiple-choice tasks, inputs are 3D: [batch_size, num_choices, sequence_length]
+    if config.task == "multiple-choice":
+        num_choices = config.task_kwargs.get("num_choices", 4) if config.task_kwargs else 4
+        input_size_list: list[list[int]] = [[batch_size, num_choices, sequence_length]] * len(inputs)
+    else:
+        input_size_list: list[list[int]] = [[batch_size, sequence_length]] * len(inputs)
+
     if config.dynamic_input is not None and (input_size_list not in config.dynamic_input):
         config.dynamic_input.append(input_size_list)
 

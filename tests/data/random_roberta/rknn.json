@@ -1,12 +1,13 @@
 {
     "model_b1_s16.rknn": {
-        "rktransformers_version": "0.1.0",
+        "rktransformers_version": "0.2.0",
         "model_input_names": [
             "input_ids",
             "attention_mask"
         ],
         "batch_size": 1,
         "max_seq_length": 16,
+        "task_kwargs": null,
         "float_dtype": "float16",
         "target_platform": "rk3588",
         "single_core_mode": false,
@@ -15,7 +16,7 @@
         "custom_string": null,
         "inputs_yuv_fmt": null,
         "dynamic_input": null,
-        "opset": 18,
+        "opset": 19,
         "task": "auto",
         "quantization": {
             "do_quantization": false,
@@ -43,13 +44,14 @@
         }
     },
     "model_b2_s32.rknn": {
-        "rktransformers_version": "0.1.0",
+        "rktransformers_version": "0.2.0",
         "model_input_names": [
             "input_ids",
             "attention_mask"
         ],
         "batch_size": 2,
         "max_seq_length": 32,
+        "task_kwargs": null,
         "float_dtype": "float16",
         "target_platform": "rk3588",
         "single_core_mode": false,
@@ -58,7 +60,7 @@
         "custom_string": null,
         "inputs_yuv_fmt": null,
         "dynamic_input": null,
-        "opset": 18,
+        "opset": 19,
         "task": "auto",
         "quantization": {
             "do_quantization": false,
@@ -86,13 +88,14 @@
         }
     },
     "model_b4_s64.rknn": {
-        "rktransformers_version": "0.1.0",
+        "rktransformers_version": "0.2.0",
         "model_input_names": [
             "input_ids",
             "attention_mask"
         ],
         "batch_size": 4,
         "max_seq_length": 64,
+        "task_kwargs": null,
         "float_dtype": "float16",
         "target_platform": "rk3588",
         "single_core_mode": false,
@@ -101,7 +104,7 @@
         "custom_string": null,
         "inputs_yuv_fmt": null,
         "dynamic_input": null,
-        "opset": 18,
+        "opset": 19,
         "task": "auto",
         "quantization": {
             "do_quantization": false,
@@ -129,13 +132,14 @@
         }
     },
     "model_b1_s32.rknn": {
-        "rktransformers_version": "0.1.0",
+        "rktransformers_version": "0.2.0",
         "model_input_names": [
             "input_ids",
             "attention_mask"
         ],
         "batch_size": 1,
         "max_seq_length": 32,
+        "task_kwargs": null,
         "float_dtype": "float16",
         "target_platform": "rk3588",
         "single_core_mode": false,
@@ -144,7 +148,7 @@
         "custom_string": null,
         "inputs_yuv_fmt": null,
         "dynamic_input": null,
-        "opset": 18,
+        "opset": 19,
         "task": "auto",
         "quantization": {
             "do_quantization": false,

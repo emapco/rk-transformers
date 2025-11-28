@@ -150,7 +150,7 @@ INTEGRATION_TRANSFORMER_MODEL = "rk-transformers/bert-base-uncased"
 
 
 # RKNN backend gets overloaded when running all tests at once
-@pytest.mark.flaky(reruns=2, reruns_delay=random.uniform(12, 20), only_rerun=["RuntimeError"])
+@pytest.mark.flaky(reruns=1, reruns_delay=random.uniform(15, 30), only_rerun=["RuntimeError"])
 @pytest.mark.slow
 @pytest.mark.manual
 @pytest.mark.integration

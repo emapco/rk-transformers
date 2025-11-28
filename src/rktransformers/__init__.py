@@ -17,7 +17,15 @@ __version__ = "0.2.0"
 
 from .configuration import OptimizationConfig, QuantizationConfig, RKNNConfig
 from .integrations import RKCrossEncoder, RKSentenceTransformer
-from .modeling import RKRTModel, RKRTModelForFeatureExtraction, RKRTModelForMaskedLM, RKRTModelForSequenceClassification
+from .modeling import (
+    RKRTModel,
+    RKRTModelForFeatureExtraction,
+    RKRTModelForMaskedLM,
+    RKRTModelForMultipleChoice,
+    RKRTModelForQuestionAnswering,
+    RKRTModelForSequenceClassification,
+    RKRTModelForTokenClassification,
+)
 
 __all__ = [
     # Config
@@ -31,5 +39,8 @@ __all__ = [
     "RKRTModel",
     "RKRTModelForFeatureExtraction",
     "RKRTModelForMaskedLM",
+    "RKRTModelForMultipleChoice",
+    "RKRTModelForQuestionAnswering",
     "RKRTModelForSequenceClassification",
+    "RKRTModelForTokenClassification",
 ]

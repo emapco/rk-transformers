@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import contextlib
-import importlib.util
 import json
 import os
 import re
@@ -65,13 +64,17 @@ from .constants import (
     PlatformType,
 )
 from .utils.env_utils import get_edge_host_platform
+from .utils.import_utils import (
+    is_rknn_toolkit_available,
+    is_rknn_toolkit_lite_available,
+)
 from .utils.logging_utils import suppress_output
 
 logger = logging.get_logger(__name__)
 
-if importlib.util.find_spec("rknnlite") is not None:
+if is_rknn_toolkit_lite_available():
     from rknnlite.api import RKNNLite  # pyright: ignore[reportMissingImports]
-elif importlib.util.find_spec("rknn") is not None:
+elif is_rknn_toolkit_available():
     # Fallback to RKNN if RKNNLite is not available. RKNN is a superset of RKNNLite.
     from rknn.api import RKNN as RKNNLite  # pyright: ignore[reportMissingImports]
 else:
@@ -260,6 +263,7 @@ class RKRTModel(
     def __init__(
         self,
         *,
+        model_id: str | None = None,
         config: PretrainedConfig | None = None,
         model_path: str | Path,
         platform: PlatformType | None = None,
@@ -272,6 +276,7 @@ class RKRTModel(
             raise ValueError("A Hugging Face config is required to build an RKRT model.")
 
         super().__init__(model_path=model_path, platform=platform, core_mask=core_mask, rknn_config=rknn_config)
+        self.model_id = model_id
         self.config = config
 
         # Set defaults for input_names, batch_size, and max_seq_length
@@ -291,15 +296,17 @@ class RKRTModel(
             if hasattr(self.rknn_config, "batch_size"):
                 self.batch_size = self.rknn_config.batch_size
 
+        self.pad_token_id = 0
+        self.pad_token_type_id = 0
+        self.pad_attention_mask = 0  # Huggingface transformers uses 0 for padding attention mask
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
-            self.pad_token_id = self.tokenizer.pad_token_id
-            self.pad_token_type_id = self.tokenizer.pad_token_type_id or 0
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+            if hasattr(self.tokenizer, "pad_token_id") and self.tokenizer.pad_token_id is None:
+                self.pad_token_id = self.tokenizer.pad_token_id
+            if hasattr(self.tokenizer, "pad_token_type_id") and self.tokenizer.pad_token_type_id is not None:
+                self.pad_token_type_id = self.tokenizer.pad_token_type_id
         except Exception:
             logger.warning("Failed to load tokenizer. Using default padding IDs (0).")
-            self.pad_token_id = 0
-            self.pad_token_type_id = 0
-        self.pad_attention_mask = 0  # Huggingface transformers uses 0 for padding attention mask
 
         # From optimum.onnxruntime.modeling.ORTModel
         AutoConfig.register(self.model_type, AutoConfig)
@@ -310,7 +317,14 @@ class RKRTModel(
         """Make RKRTModel callable to work with Transformers/SentenceTransformers"""
         return self.forward(*args, **kwargs)
 
-    def forward(self, *args: Any, **kwargs: Any) -> ModelOutput | tuple[torch.Tensor | np.ndarray] | None:
+    def forward(
+        self, *args: Any, **kwargs: Any
+    ) -> (
+        ModelOutput
+        | tuple[torch.Tensor | np.ndarray]
+        | tuple[torch.Tensor | np.ndarray, torch.Tensor | np.ndarray]
+        | None
+    ):
         """Define the computation performed at every call.
 
         Should be overridden by all subclasses.
@@ -385,14 +399,12 @@ class RKRTModel(
         if target_shape is None:
             target_shape = (getattr(self, "batch_size", tensor.shape[0]), self.max_seq_length)
 
-        # Validate that target_shape rank matches tensor rank
         if len(target_shape) != len(tensor.shape):
             raise ValueError(
                 f"Target shape rank ({len(target_shape)}) must match tensor rank ({len(tensor.shape)}). "
                 f"Got target_shape={target_shape}, tensor.shape={tensor.shape}"
             )
 
-        # Check if padding is needed
         needs_padding = any(current < target for current, target in zip(tensor.shape, target_shape, strict=True))
         if not needs_padding:
             return tensor
@@ -489,14 +501,19 @@ class RKRTModel(
             tensor = model_inputs.get(name)
             if tensor is None:
                 continue
-            ordered_inputs.append(self._tensor_to_numpy(tensor, np.dtype(np.int64)))
+            ordered_inputs.append(self._tensor_to_numpy(tensor, np.dtype(np.int16)))
 
         if self.rknn is None:
             raise RuntimeError("RKNN runtime has been released and can no longer run inference.")
 
         # Suppress RKNN inference logs
         with suppress_output():
-            outputs = self.rknn.inference(inputs=ordered_inputs)
+            if is_rknn_toolkit_lite_available():
+                # data_type: int8 | uint8 | int16 | float16 | float32 - limitation with rknn MM API/Hardware
+                # This an issue for models with embeddings since they require int64 inputs.
+                outputs = self.rknn.inference(inputs=ordered_inputs, data_type="int16")
+            else:
+                outputs = self.rknn.inference(inputs=ordered_inputs)
         if outputs is None:
             input_summaries = [f"shape={arr.shape}, dtype={arr.dtype}" for arr in ordered_inputs]
             raise RuntimeError(f"RKNN inference returned None - input summary: {input_summaries}")
@@ -807,6 +824,7 @@ class RKRTModel(
         )
 
         return cls(
+            model_id=model_id,
             config=resolved_config,
             model_path=model_path,
             platform=platform,
@@ -926,7 +944,7 @@ MASKED_LM_EXAMPLE = r"""
     >>> outputs = model(**inputs)
     >>> logits = outputs.logits
     >>> list(logits.shape)
-    [1, 8, 28996]
+    [1, 512, 30522]
     ```
 """
 
@@ -1034,9 +1052,9 @@ QUESTION_ANSWERING_EXAMPLE = r"""
     >>> start_logits = outputs.start_logits
     >>> end_logits = outputs.end_logits
     >>> list(start_logits.shape)
-    [1, 14]
+    [1, 512]
     >>> list(end_logits.shape)
-    [1, 14]
+    [1, 512]
     ```
 """
 
@@ -1052,7 +1070,7 @@ class RKRTModelForQuestionAnswering(RKRTModel):
         + QUESTION_ANSWERING_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
             model_class="RKRTModelForQuestionAnswering",
-            checkpoint="rk-transformers/roberta-base-squad2",
+            checkpoint="rk-transformers/distilbert-base-cased-distilled-squad",
         )
     )
     def forward(
@@ -1090,7 +1108,7 @@ TOKEN_CLASSIFICATION_EXAMPLE = r"""
     >>> outputs = model(**inputs)
     >>> logits = outputs.logits
     >>> list(logits.shape)
-    [1, 12, 9]
+    [1, 512, 9]
     ```
 """
 
@@ -1142,17 +1160,19 @@ MULTIPLE_CHOICE_EXAMPLE = r"""
     >>> prompt = "In Italy, pizza is served in slices."
     >>> choice0 = "It is eaten with a fork and knife."
     >>> choice1 = "It is eaten while held in the hand."
+    >>> choice2 = "It is blended into a smoothie."
+    >>> choice3 = "It is folded into a taco."
     >>> labels = torch.tensor(0).unsqueeze(0)  # choice0 is correct (according to Wikipedia ;))
 
-    >>> encoding = tokenizer([prompt, prompt], [choice0, choice1], return_tensors="np", padding=True)
-    >>> inputs = {{k: v.unsqueeze(0) for k, v in encoding.items()}}
+    >>> encoding = tokenizer([prompt, prompt, prompt, prompt], [choice0, choice1, choice2, choice3], return_tensors="np", padding=True)
+    >>> inputs = {{k: np.expand_dims(v, 0) for k, v in encoding.items()}}
 
     >>> outputs = model(**inputs)
     >>> logits = outputs.logits
     >>> list(logits.shape)
-    [1, 2]
+    [1, 4]
     ```
-"""
+"""  # noqa: E501
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
@@ -1167,7 +1187,7 @@ class RKRTModelForMultipleChoice(RKRTModel):
         + MULTIPLE_CHOICE_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
             model_class="RKRTModelForMultipleChoice",
-            checkpoint="rk-transformers/roberta-large-finetuned-csqa",
+            checkpoint="rk-transformers/bert-base-uncased_SWAG",
         )
     )
     def forward(

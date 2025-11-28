@@ -144,20 +144,21 @@ class PreTrainedModel(ABC):  # noqa: B024
     pass
 
 
-class RKNNRTMixin:
-    """Mixin class for RKNN-backed models."""
+class RKNNRuntime:
+    """Handles RKNN model loading and runtime initialization."""
 
-    def __init_subclass__(
-        cls,
+    def __init__(
+        self,
         model_path: str | Path,
         platform: PlatformType | None = None,
         core_mask: CoreMaskType = "auto",
         rknn_config: RKNNConfig | None = None,
     ) -> None:
-        cls.model_path = Path(model_path)
-        cls.platform = platform or get_edge_host_platform()
-        cls.core_mask = core_mask
-        cls.rknn_config = rknn_config
+        self.model_path = Path(model_path)
+        self.platform = platform or get_edge_host_platform()
+        self.core_mask = core_mask
+        self.rknn_config = rknn_config
+        self.rknn = self._load_rknn_model()
 
     def _release(self) -> None:
         """Release RKNNLite resources following RKNN-toolkit2 best practices."""
@@ -245,6 +246,7 @@ class RKNNRTMixin:
 
 
 class RKRTModel(
+    RKNNRuntime,
     PreTrainedModel,
     ModelHubMixin,
     library_name="rk-transformers",
@@ -269,11 +271,8 @@ class RKRTModel(
         if config is None:
             raise ValueError("A Hugging Face config is required to build an RKRT model.")
 
+        super().__init__(model_path=model_path, platform=platform, core_mask=core_mask, rknn_config=rknn_config)
         self.config = config
-        self.model_path = Path(model_path)
-        self.platform = platform or get_edge_host_platform()
-        self.core_mask = core_mask
-        self.rknn_config = rknn_config
 
         # Set defaults for input_names, batch_size, and max_seq_length
         self.input_names = ["input_ids", "attention_mask"]
@@ -302,8 +301,6 @@ class RKRTModel(
             self.pad_token_type_id = 0
         self.pad_attention_mask = 0  # Huggingface transformers uses 0 for padding attention mask
 
-        self.rknn = self._load_rknn_model()
-
         # From optimum.onnxruntime.modeling.ORTModel
         AutoConfig.register(self.model_type, AutoConfig)
         if hasattr(self.auto_model_class, "register"):
@@ -328,90 +325,6 @@ class RKRTModel(
     def to(self, device: torch.device | str) -> "RKRTModel":
         """No-op for RKRTModel. For compatibility with Hugging Face Transformers Pipelines."""
         return self
-
-    def _release(self) -> None:
-        """Release RKNNLite resources following RKNN-toolkit2 best practices."""
-        if getattr(self, "rknn", None) is not None:
-            assert self.rknn is not None
-            with contextlib.suppress(Exception), suppress_output():
-                self.rknn.release()
-            self.rknn = None
-
-    def __del__(self) -> None:  # pragma: no cover - destructor safety
-        self._release()
-
-    def list_model_compatible_platform(self) -> dict[str, Any] | None:
-        """
-        List supported platforms for the loaded model.
-        Returns a dictionary of supported platforms or None if the check fails.
-        """
-        if self.rknn is None:
-            return None
-        with suppress_output():
-            if hasattr(self.rknn, "list_support_target_platform") and callable(self.rknn.list_support_target_platform):  # type: ignore
-                return self.rknn.list_support_target_platform(self.model_path.as_posix())  # type: ignore
-        return None
-
-    def _load_rknn_model(self) -> RKNNLite:
-        """Load the RKNN graph and initialize the runtime."""
-        if not self.model_path.exists():
-            raise FileNotFoundError(f"RKNN model not found: {self.model_path}")
-
-        # Suppress RKNNLite C-level logging
-        with suppress_output():
-            rknn = RKNNLite(verbose=False)
-            logger.debug("Loading RKNN model from %s", self.model_path)
-            ret = rknn.load_rknn(self.model_path.as_posix())
-        if ret != 0:
-            raise RuntimeError("Failed to load RKNN model")
-
-        # Check model-platform compatibility
-        supported_platforms = None
-        if hasattr(rknn, "list_support_target_platform") and callable(rknn.list_support_target_platform):  # type: ignore
-            with suppress_output():
-                supported_platforms: dict[str, Any] | None = rknn.list_support_target_platform(  # type: ignore
-                    self.model_path.as_posix()
-                )
-
-        if supported_platforms is not None:
-            # The return value is an OrderedDict with a key 'support_target_platform' and 'filled_target_platform'
-            # containing a list of supported platforms.
-            # Note: Only the 'support_target_platform' is relevant for compatibility check.
-            support_platforms = [p.lower() for p in supported_platforms.get("support_target_platform", [])]
-            if self.platform is not None and len(support_platforms) > 0 and self.platform not in support_platforms:
-                raise RuntimeError(
-                    f"The model is not compatible with the current platform '{self.platform}'. "
-                    f"Supported platforms: {support_platforms}"
-                )
-
-        logger.debug(
-            "Initializing RKNN runtime (platform=%s, core_mask=%s)",
-            self.platform,
-            self.core_mask,
-        )
-        if self.platform in {"rk3588", "rk3576"}:
-            core_mask_map = {
-                "auto": RKNNLite.NPU_CORE_AUTO,
-                "0": RKNNLite.NPU_CORE_0,
-                "1": RKNNLite.NPU_CORE_1,
-                "2": RKNNLite.NPU_CORE_2,
-                "0_1": RKNNLite.NPU_CORE_0_1,
-                "0_1_2": RKNNLite.NPU_CORE_0_1_2,
-                "all": RKNNLite.NPU_CORE_ALL,
-            }
-            npu_core = core_mask_map.get(self.core_mask, RKNNLite.NPU_CORE_AUTO)
-            with suppress_output():
-                ret = rknn.init_runtime(core_mask=npu_core)
-                if ret != 0:
-                    ret = rknn.init_runtime(target=self.platform, core_mask=npu_core)
-        else:
-            with suppress_output():
-                ret = rknn.init_runtime()
-
-        if ret != 0:
-            raise RuntimeError("Failed to initialize RKNN runtime")
-
-        return rknn
 
     def _tensor_to_numpy(self, tensor: torch.Tensor | np.ndarray, dtype: np.dtype[Any]) -> np.ndarray:
         if tensor is None:

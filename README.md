@@ -20,9 +20,9 @@
 
 ### 🔄 Model Export & Conversion
 
-- **Automatic ONNX Export**: Converts Hugging Face models to ONNX with intelligent input detection
+- **Automatic ONNX Export**: Converts Hugging Face models to ONNX with input detection
 - **RKNN Optimization**: Exports to RKNN format with configurable optimization levels (O0-O3)
-- **Quantization**: Post-training quantization (INT8, FP16) with calibration dataset support
+- **Quantization**: INT8 (w8a8) quantization with calibration dataset support
 - **Push to Hub**: Direct integration with Hugging Face Hub for model versioning
 
 ### ⚡ High-Performance Inference
@@ -33,17 +33,17 @@
 
 ### 🧩 Framework Integration
 
-- **Sentence Transformers**: Drop-in replacement with `backend="rknn"` parameter
+- **Sentence Transformers**: Drop-in replacement with `from rktransformers import RKSentenceTransformer as SentenceTransformer`
 - **Transformers API**: Compatible with standard Hugging Face pipelines
-- **Multiple Tasks**: Feature extraction, masked LM, sequence classification
+- **Multiple Tasks**: Feature extraction, masked LM, sequence classification and more
 
 ## 📦 Installation
 
 ### Prerequisites
 
-- Python 3.10 or later
+- Python 3.10 - 3.12
 - Linux-based OS (Ubuntu 24.04+ recommended)
-- For export: PC with x86_64 architecture
+- For export: PC with x86_64/arm64 architecture
 - For inference: Rockchip device with RKNPU2 support (RK3588, RK3576, etc.)
 
 ### Quick Install
@@ -136,6 +136,7 @@ rk-transformers-cli export \
 ### 2. Run Inference with Sentence Transformers
 
 #### SentenceTransformer
+
 ```python
 from rktransformers import RKSentenceTransformer
 
@@ -162,6 +163,7 @@ model = RKSentenceTransformer(
 ```
 
 #### CrossEncoder
+
 ```python
 from rktransformers import RKCrossEncoder
 
@@ -357,7 +359,7 @@ model = RKCrossEncoder(
 Current RKNN support for dynamic inputs is **experimental and not fully functional**. As a result, all models exported via `rk-transformers` use **static input shapes** defined at export time.
 
 - **Performance Impact**: The NPU allocates memory based on the static shape. If you export with `max_seq_length=512` but only infer on 10 tokens, the NPU still processes the full 512-token padding, leading to inefficient inference.
-- **Usage**: You must ensure your input tensors match the exported dimensions (or use padding).
+- **Usage**: You must ensure your input tensors match the exported dimensions. `RKModel` dervied classes automatically handle padding to the expected shape for `["batch_size", "seq_length"]` input shapes for `input_ids`, `attention_mask`, and `token_type_ids` inputs.
 - **Recommendation**: Export multiple versions of your model optimized for different sequence lengths (e.g., 128, 256, 512) and batch sizes (e.g., 1, 2, 4) if your workload varies significantly.
 
 ### Quantization Support
@@ -372,12 +374,19 @@ While the tool supports various quantization data types, many are **experimental
 [RKNN currently supports a subset of operators supported by ONNX.](https://github.com/airockchip/rknn-toolkit2/blob/master/doc/RKNNToolKit2_OP_Support-2.3.2.md) If your model uses operators not supported by RKNN, you may need to explore setting different export parameters:
 
 Easy methods (limited success):
+
 - `opset`: 14-19
 - `op_target`: {'op_id':'cpu', 'op_id3':'cpu'}
 
 Hard methods:
+
 - Modify the ONNX model graph to replace unsupported operators with supported ones.
 - Incorporate the `rknn.register_custom_op()` method inbetween `rknn.config()` and `rknn.load_onnx()` in the `convert.py` module.
+
+### Dtype Limitations
+
+- **Input Types**: RKNN NPUs only support: `int8`, `uint8`, `int16`, `float16`, `float32` for input tensor dtypes. This results in noticeable performance degradation when using `int64` input tensors (e.g., `input_ids`).
+- **Model Weights**: Model weights are stored as `float16` by default. When quantized, weights are stored as `int8`.
 
 ## Architecture
 

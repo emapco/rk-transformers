@@ -126,3 +126,19 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
 ]
+
+[tool.pyright]
+include = [
+  "src",
+  "tests"
+]
+ignore = [
+  ".git",
+  ".github",
+  "**/__pycache__",
+  "**/.pytest_cache",
+  ".venv",
+  ".vscode",
+  "outputs",
+  "models",
+]

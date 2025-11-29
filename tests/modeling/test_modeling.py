@@ -18,7 +18,7 @@ import tempfile
 from collections import OrderedDict
 from pathlib import Path
 from typing import cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -38,18 +38,10 @@ from rktransformers.modeling import (
 class TestRKNNPlatformCheck:
     """Tests for RKNN platform compatibility checking."""
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_compatible_platform(
-        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
+        self, mock_rknn_lite: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
     ) -> None:
         """Test loading model with compatible platform."""
-        mock_rknn = mock_rknnlite_class.return_value
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn.list_support_target_platform.return_value = OrderedDict(
-            [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
-        )
-
         model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3588")
         assert model.rknn is not None
 
@@ -58,18 +50,10 @@ class TestRKNNPlatformCheck:
             [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
         )
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_incompatible_platform(
-        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
+        self, mock_rknn_lite: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
     ) -> None:
         """Test loading model with incompatible platform raises error."""
-        mock_rknn = mock_rknnlite_class.return_value
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn.list_support_target_platform.return_value = OrderedDict(
-            [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
-        )
-
         with pytest.raises(RuntimeError, match="not compatible"):
             RKModel(
                 config=pretrained_config,
@@ -77,18 +61,10 @@ class TestRKNNPlatformCheck:
                 platform="rk3566",  # Not in supported list
             )
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_case_insensitivity(
-        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
+        self, mock_rknn_lite: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
     ) -> None:
         """Test that platform matching is case-insensitive."""
-        mock_rknn = mock_rknnlite_class.return_value
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn.list_support_target_platform.return_value = OrderedDict(
-            [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
-        )
-
         model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, platform="rk3588")
         assert model.rknn is not None
 
@@ -100,23 +76,15 @@ class TestRKNNPlatformCheck:
             ("rk3568", False),  # Not supported
         ],
     )
-    @patch("rktransformers.modeling.RKNNLite")
     def test_platform_compatibility_variations(
         self,
-        mock_rknnlite_class: MagicMock,
+        mock_rknn_lite: MagicMock,
         pretrained_config: PretrainedConfig,
         dummy_rknn_file: Path,
         platform: str,
         should_pass: bool,
     ) -> None:
         """Test platform compatibility with various platform strings."""
-        mock_rknn = mock_rknnlite_class.return_value
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn.list_support_target_platform.return_value = OrderedDict(
-            [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
-        )
-
         if should_pass:
             model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, platform=cast(PlatformType, platform))
             assert model.rknn is not None
@@ -124,14 +92,11 @@ class TestRKNNPlatformCheck:
             with pytest.raises(RuntimeError, match="not compatible"):
                 RKModel(config=pretrained_config, model_path=dummy_rknn_file, platform=cast(PlatformType, platform))
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_multiple_supported_platforms(
-        self, mock_rknnlite_class: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
+        self, mock_rknn_lite: MagicMock, pretrained_config: PretrainedConfig, dummy_rknn_file: Path
     ) -> None:
         """Test model that supports multiple platforms."""
-        mock_rknn = mock_rknnlite_class.return_value
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
+        mock_rknn = mock_rknn_lite.return_value
         mock_rknn.list_support_target_platform.return_value = OrderedDict(
             [
                 ("filled_target_platform", ["rk3588", "rk3568"]),
@@ -173,58 +138,32 @@ class TestRKModelFileName:
 
             yield tmp_path
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_from_pretrained_with_file_name(self, mock_rknn_lite, temp_model_dir):
-        # Setup mock
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn_lite.return_value = mock_rknn
-
         # Test loading specific file
         RKModel.from_pretrained(temp_model_dir, file_name="model_quantized.rknn", platform="rk3588")
 
         # Verify correct file was loaded
         expected_path = (temp_model_dir / "model_quantized.rknn").as_posix()
-        mock_rknn.load_rknn.assert_called_with(expected_path)
+        mock_rknn_lite.return_value.load_rknn.assert_called_with(expected_path)
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_from_pretrained_default(self, mock_rknn_lite, temp_model_dir):
-        # Setup mock
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn_lite.return_value = mock_rknn
-
         # Test loading default (should find model.rknn or first available)
         RKModel.from_pretrained(temp_model_dir, platform="rk3588")
 
         # Verify it loaded one of the valid files (preference is usually model.rknn)
         # Based on _infer_file_path logic, it prefers RKNN_WEIGHTS_NAME ("model.rknn")
         expected_path = (temp_model_dir / "model.rknn").as_posix()
-        mock_rknn.load_rknn.assert_called_with(expected_path)
+        mock_rknn_lite.return_value.load_rknn.assert_called_with(expected_path)
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_from_pretrained_with_subdirectory_file_name(self, mock_rknn_lite, temp_model_dir):
-        # Setup mock
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn_lite.return_value = mock_rknn
-
         # Test loading quantized model from subdirectory
         RKModel.from_pretrained(temp_model_dir, file_name="rknn/model_w8a8.rknn", platform="rk3588")
 
         # Verify correct file was loaded
         expected_path = (temp_model_dir / "rknn" / "model_w8a8.rknn").as_posix()
-        mock_rknn.load_rknn.assert_called_with(expected_path)
+        mock_rknn_lite.return_value.load_rknn.assert_called_with(expected_path)
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_from_pretrained_file_name_not_found(self, mock_rknn_lite, temp_model_dir):
-        # Setup mock
-        mock_rknn = MagicMock()
-        mock_rknn_lite.return_value = mock_rknn
-
         # Test loading non-existent file
         with pytest.raises((FileNotFoundError, OSError)):
             RKModel.from_pretrained(temp_model_dir, file_name="non_existent.rknn", platform="rk3588")
@@ -233,14 +172,11 @@ class TestRKModelFileName:
 class TestRKModelingTasks:
     """Test RKNN model task-specific classes."""
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_question_answering(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
         """Test RKModelForQuestionAnswering forward pass."""
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
+        mock_rknn = mock_rknn_lite.return_value
         batch_size = 1
         seq_len = 128
 
@@ -248,7 +184,6 @@ class TestRKModelingTasks:
             np.random.randn(batch_size, seq_len).astype(np.float32),
             np.random.randn(batch_size, seq_len).astype(np.float32),
         ]
-        mock_rknn_lite.return_value = mock_rknn
 
         model = RKModelForQuestionAnswering(config=pretrained_config, model_path=dummy_rknn_file)
 
@@ -261,20 +196,16 @@ class TestRKModelingTasks:
         assert outputs.start_logits.shape == (batch_size, seq_len)
         assert outputs.end_logits.shape == (batch_size, seq_len)
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_token_classification(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
         """Test RKModelForTokenClassification forward pass."""
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
+        mock_rknn = mock_rknn_lite.return_value
         batch_size = 1
         seq_len = 128
         num_labels = 9
 
         mock_rknn.inference.return_value = [np.random.randn(batch_size, seq_len, num_labels).astype(np.float32)]
-        mock_rknn_lite.return_value = mock_rknn
 
         model = RKModelForTokenClassification(config=pretrained_config, model_path=dummy_rknn_file)
 
@@ -285,21 +216,17 @@ class TestRKModelingTasks:
         assert hasattr(outputs, "logits")
         assert outputs.logits.shape == (batch_size, seq_len, num_labels)
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_multiple_choice(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
         """Test RKModelForMultipleChoice forward pass."""
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
+        mock_rknn = mock_rknn_lite.return_value
         batch_size = 1
         seq_len = 128
         num_choices = 4
 
         # RKNN returns logits with shape [batch_size, num_choices]
         mock_rknn.inference.return_value = [np.random.randn(batch_size, num_choices).astype(np.float32)]
-        mock_rknn_lite.return_value = mock_rknn
 
         # Create config with task_kwargs
         rknn_config = RKNNConfig(task_kwargs={"num_choices": num_choices})
@@ -316,16 +243,10 @@ class TestRKModelingTasks:
 class TestInputPaddingMethods:
     """Test input padding and preparation methods."""
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_pad_to_model_input_dimensions_2d(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
         """Test 2D padding for standard tasks."""
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn_lite.return_value = mock_rknn
-
         model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
 
         # Test with torch tensor
@@ -338,16 +259,10 @@ class TestInputPaddingMethods:
         padded = model._pad_to_model_input_dimensions(input_array, padding_id=0, use_torch=False)
         assert padded.shape == (4, 128)
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_pad_to_model_input_dimensions_3d(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
         """Test 3D padding for multiple-choice tasks."""
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn_lite.return_value = mock_rknn
-
         model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
 
         # Test with torch tensor
@@ -365,16 +280,10 @@ class TestInputPaddingMethods:
         )
         assert padded.shape == (4, 4, 128)
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_pad_to_model_input_dimensions_no_padding_needed(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
         """Test padding when input already matches target shape."""
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn_lite.return_value = mock_rknn
-
         model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
 
         # Input already at target size
@@ -383,16 +292,10 @@ class TestInputPaddingMethods:
         assert padded.shape == (4, 128)
         assert torch.equal(input_tensor, padded)  # Should be unchanged
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_prepare_text_inputs_2d(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
         """Test standard 2D input preparation."""
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn_lite.return_value = mock_rknn
-
         model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
 
         input_ids = torch.randint(0, 1000, (2, 64))
@@ -405,16 +308,10 @@ class TestInputPaddingMethods:
         assert model_inputs["input_ids"].shape == (4, 128)
         assert model_inputs["attention_mask"].shape == (4, 128)
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_prepare_text_inputs_3d(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
         """Test 3D input preparation for multiple-choice."""
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn_lite.return_value = mock_rknn
-
         model = RKModel(config=pretrained_config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
 
         input_ids = torch.randint(0, 1000, (2, 4, 64))
@@ -430,14 +327,8 @@ class TestInputPaddingMethods:
         assert model_inputs["input_ids"].shape == (4, 4, 128)
         assert model_inputs["attention_mask"].shape == (4, 4, 128)
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_prepare_text_inputs_with_token_type_ids(self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path) -> None:
         """Test input preparation with token type IDs."""
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn_lite.return_value = mock_rknn
-
         # Create config with token types
         config = PretrainedConfig(model_type="rknn_model", type_vocab_size=2)
         model = RKModel(config=config, model_path=dummy_rknn_file, max_seq_length=128, batch_size=4)
@@ -454,16 +345,10 @@ class TestInputPaddingMethods:
         assert model_inputs["attention_mask"].shape == (4, 128)
         assert model_inputs["token_type_ids"].shape == (4, 128)
 
-    @patch("rktransformers.modeling.RKNNLite")
     def test_prepare_text_inputs_missing_input_ids(
         self, mock_rknn_lite: MagicMock, dummy_rknn_file: Path, pretrained_config: PretrainedConfig
     ) -> None:
         """Test error handling for missing input_ids."""
-        mock_rknn = MagicMock()
-        mock_rknn.load_rknn.return_value = 0
-        mock_rknn.init_runtime.return_value = 0
-        mock_rknn_lite.return_value = mock_rknn
-
         model = RKModel(config=pretrained_config, model_path=dummy_rknn_file)
 
         with pytest.raises(ValueError, match="`input_ids` is required"):

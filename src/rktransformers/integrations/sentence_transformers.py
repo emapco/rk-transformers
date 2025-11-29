@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Callable
 from typing import Any, Literal
 
 import numpy as np
+import torch
 from sentence_transformers import CrossEncoder, SentenceTransformer
 from sentence_transformers.models import Pooling, Transformer
 from sentence_transformers.util.file_io import is_sentence_transformer_model
@@ -32,7 +34,7 @@ def load_rknn_model(model_name_or_path: str, config: PretrainedConfig, task_name
         model_name_or_path (str): The model name on Hugging Face or the path to a local model directory.
         config (PretrainedConfig): The model configuration.
         task_name (str): The task name for the model (e.g. 'feature-extraction', 'fill-mask').
-        model_kwargs (dict): Additional keyword arguments for the model loading.
+        model_kwargs (dict[str, Any]): Additional keyword arguments for the model loading.
             - file_name (str, optional): Specific RKNN file to load (e.g. "model_quantized.rknn").
     """
     try:
@@ -79,7 +81,7 @@ def _load_rknn_config(
 
     Args:
         config (PretrainedConfig): Model configuration
-        **model_kwargs: Additional model loading arguments
+        model_kwargs (dict[str, Any]): Additional model loading arguments
 
     Returns:
         tuple: (rknn_config dict, updated config, updated model_kwargs dict)
@@ -191,7 +193,7 @@ class RKCrossEncoder(CrossEncoder):
         Overrides CrossEncoder._load_model to support 'rknn' backend.
         """
         if backend == "rknn":
-            self._rknn_config, model_kwargs = _load_rknn_config(config, **model_kwargs)
+            self._rknn_config, model_kwargs = _load_rknn_config(config, model_kwargs)
             self.model = load_rknn_model(
                 model_name_or_path,
                 config=config,
@@ -204,18 +206,34 @@ class RKCrossEncoder(CrossEncoder):
     def predict(
         self,
         sentences,
-        batch_size=32,
-        show_progress_bar=None,
-        activation_fn=None,
-        apply_softmax=False,
-        convert_to_numpy=True,
-        convert_to_tensor=False,
-    ):
+        batch_size: int = 32,
+        show_progress_bar: bool | None = None,
+        activation_fn: Callable | None = None,
+        apply_softmax: bool | None = False,
+        convert_to_numpy: bool = True,
+        convert_to_tensor: bool = False,
+    ) -> list[torch.Tensor] | np.ndarray | torch.Tensor:
         """
         Performs predictions with the CrossEncoder on the given sentence pairs.
 
         Overrides CrossEncoder.predict to enforce max_length padding for RKNN models.
-        """
+
+        Args:
+            sentences (Union[List[Tuple[str, str]], Tuple[str, str]]): A list of sentence pairs [(Sent1, Sent2), (Sent3, Sent4)]
+                or one sentence pair (Sent1, Sent2).
+            batch_size (int, optional): Batch size for encoding. Overridden by RKNN model's configured batch size if set.
+            show_progress_bar (bool, optional): Output progress bar. Defaults to None.
+            activation_fn (callable, optional): Activation function applied on the logits output of the CrossEncoder.
+                If None, the ``model.activation_fn`` will be used, which defaults to :class:`torch.nn.Sigmoid` if num_labels=1, else
+                :class:`torch.nn.Identity`. Defaults to None.
+            convert_to_numpy (bool, optional): Convert the output to a numpy matrix. Defaults to True.
+            apply_softmax (bool, optional): If set to True and `model.num_labels > 1`, applies softmax on the logits
+                output such that for each sample, the scores of each class sum to 1. Defaults to False.
+            convert_to_numpy (bool, optional): Whether the output should be a list of numpy vectors. If False, output
+                a list of PyTorch tensors. Defaults to True.
+            convert_to_tensor (bool, optional): Whether the output should be one large tensor. Overwrites `convert_to_numpy`.
+                Defaults to False.
+        """  # noqa: E501
         if not hasattr(self, "_rknn_config"):
             return super().predict(
                 sentences,
@@ -227,7 +245,6 @@ class RKCrossEncoder(CrossEncoder):
                 convert_to_tensor,
             )
 
-        import torch
         from tqdm.autonotebook import trange
 
         input_was_singular = False
@@ -257,7 +274,7 @@ class RKCrossEncoder(CrossEncoder):
             batch = sentences[start_index : start_index + batch_size]
             # Force max_length padding for RKNN
             features = self.tokenizer(
-                batch,
+                batch,  # type: ignore
                 padding="max_length",
                 truncation=True,
                 return_tensors="pt",
@@ -355,11 +372,11 @@ class RKTransformer(Transformer):
             cache_dir (str, optional): Directory to cache the model files.
             backend (str): The backend to use for model loading (e.g., "rknn", "pytorch", "onnx").
             is_peft_model (bool): Whether the model is a PEFT (Parameter-Efficient Fine-Tuning) model.
-            **model_kwargs: Additional keyword arguments for model loading, such as:
+            **model_kwargs (dict[str, Any]): Additional keyword arguments for model loading, such as:
                 - file_name (str, optional): Specific RKNN file to load.
         """
         if backend == "rknn":
-            self._rknn_config, model_kwargs = _load_rknn_config(config, **{**model_kwargs, "cache_dir": cache_dir})
+            self._rknn_config, model_kwargs = _load_rknn_config(config, model_kwargs)
             self._is_sentence_transformer = is_sentence_transformer_model(model_name_or_path, cache_folder=cache_dir)
             self.auto_model = load_rknn_model(
                 model_name_or_path,
@@ -459,28 +476,43 @@ class RKSentenceTransformer(SentenceTransformer):
             tokenizer_kwargs,
             config_kwargs,
             model_card_data,
-            backend,
+            backend,  # type: ignore
         )
 
     def _load_auto_model(
         self,
         model_name_or_path: str,
-        token,
-        cache_folder,
-        revision,
-        trust_remote_code,
-        local_files_only,
-        model_kwargs,
-        tokenizer_kwargs,
-        config_kwargs,
-        has_modules,
-    ):
+        token: bool | str | None,
+        cache_folder: str | None,
+        revision: str | None = None,
+        trust_remote_code: bool = False,
+        local_files_only: bool = False,
+        model_kwargs: dict[str, Any] | None = None,
+        tokenizer_kwargs: dict[str, Any] | None = None,
+        config_kwargs: dict[str, Any] | None = None,
+        has_modules: bool = False,
+    ) -> list:
         """
         Override _load_auto_model to use RKTransformer for RKNN backend.
 
         This ensures that when creating models from plain transformers (no modules.json),
         we use RKTransformer which supports the RKNN backend.
-        """
+
+        Args:
+            model_name_or_path (str): The name or path of the pre-trained model.
+            token (Optional[Union[bool, str]]): The token to use for the model.
+            cache_folder (Optional[str]): The folder to cache the model.
+            revision (Optional[str], optional): The revision of the model. Defaults to None.
+            trust_remote_code (bool, optional): Whether to trust remote code. Defaults to False.
+            local_files_only (bool, optional): Whether to use only local files. Defaults to False.
+            model_kwargs (Optional[Dict[str, Any]], optional): Additional keyword arguments for the model. Defaults to None.
+            tokenizer_kwargs (Optional[Dict[str, Any]], optional): Additional keyword arguments for the tokenizer. Defaults to None.
+            config_kwargs (Optional[Dict[str, Any]], optional): Additional keyword arguments for the config. Defaults to None.
+            has_modules (bool, optional): Whether the model has modules.json. Defaults to False.
+
+        Returns:
+            List[RKTransformer | nn.Module]: A list containing the transformer model and the pooling model.
+        """  # noqa: E501
         logger.warning(
             f"No sentence-transformers model found with name {model_name_or_path}. "
             "Creating a new one with mean pooling."
@@ -508,7 +540,7 @@ class RKSentenceTransformer(SentenceTransformer):
         pooling_model = Pooling(transformer_model.get_word_embedding_dimension(), "mean")
         return [transformer_model, pooling_model]
 
-    def encode(self, sentences: str | list[str], **kwargs):
+    def encode(self, sentences: str | list[str], **kwargs):  # type: ignore
         """
         Encode sentences with RKNN backend batch size requirements.
 
@@ -517,7 +549,7 @@ class RKSentenceTransformer(SentenceTransformer):
 
         Parameters:
             sentences (str or list of str): The sentence or list of sentences to encode.
-            **kwargs: Additional keyword arguments passed to the original encode method.
+            **kwargs: Additional keyword arguments passed to the SentenceTransformer.encode method.
                 The 'batch_size' argument will be overridden if the RKNN backend is active.
 
         Returns:
@@ -526,10 +558,10 @@ class RKSentenceTransformer(SentenceTransformer):
         batch_size = kwargs.pop("batch_size", 32)
 
         # Check for RKNN config in modules
-        rknn_config = None
+        rknn_config: dict | None = None
         for module in self:
             if hasattr(module, "_rknn_config"):
-                rknn_config = module._rknn_config
+                rknn_config = module._rknn_config  # type: ignore
                 break
 
         if rknn_config is None or "batch_size" not in rknn_config:

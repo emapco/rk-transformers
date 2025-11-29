@@ -40,8 +40,10 @@ IGNORE_MODEL_REPO_FILES = [
     "*.tflite",
     "*.ot",
     ".gitattributes",
+    "coreml/**",
     "openvino/**",
     "onnx/**",
+    ".cache/**",
     ".locks/**",
     "models--*/**",
 ]

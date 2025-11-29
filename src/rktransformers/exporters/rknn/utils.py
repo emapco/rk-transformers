@@ -16,6 +16,7 @@ import contextlib
 import json
 import logging
 import os
+import shutil
 import tempfile
 
 import numpy as np
@@ -108,10 +109,11 @@ def prepare_dataset_for_quantization(
     dataset_size,
     tokenizer_path,
     model_input_names,
-    sequence_length=DEFAULT_MAX_SEQ_LENGTH,
     dataset_split=None,
     dataset_subset=None,
     dataset_columns=None,
+    batch_size=DEFAULT_BATCH_SIZE,
+    sequence_length=DEFAULT_MAX_SEQ_LENGTH,
 ):
     """
     Prepare HuggingFace dataset for RKNN quantization.
@@ -121,10 +123,11 @@ def prepare_dataset_for_quantization(
         dataset_size: Number of samples to use
         tokenizer_path: Path to tokenizer
         model_input_names: List of model input names to save (e.g., ["input_ids", "attention_mask"])
-        sequence_length: Maximum sequence length
         dataset_split: Optional list of splits to use (e.g., ["train", "validation"])
         dataset_subset: Optional subset name for the dataset
         dataset_columns: Optional list of columns to use for text data
+        batch_size: Batch size for the calibration data (default: DEFAULT_BATCH_SIZE)
+        sequence_length: Maximum sequence length (default: DEFAULT_MAX_SEQ_LENGTH)
 
     Returns:
         Path to the dataset file for RKNN quantization
@@ -219,30 +222,45 @@ def prepare_dataset_for_quantization(
     logger.info(f"Saving tokenized data to numpy files for inputs: {model_input_names}")
 
     with open(dataset_file_path, "w") as temp_file:
-        for idx in range(len(tokenized_dataset)):
-            sample = tokenized_dataset[idx]
+        batch_idx = 0
+        idx = 0
+        while idx < len(tokenized_dataset):
+            # Collect batch_size unique samples
+            batch_samples = []
+            for _ in range(batch_size):
+                if idx >= len(tokenized_dataset):
+                    break
+                batch_samples.append(tokenized_dataset[idx])
+                idx += 1
 
-            # Only save inputs specified in model_input_names
+            # Skip if we don't have enough samples for a complete batch
+            if len(batch_samples) < batch_size:
+                logger.warning(f"Skipping incomplete batch with {len(batch_samples)} samples (need {batch_size})")
+                break
+
+            # Process each input type
             input_paths = []
             for input_name in model_input_names:
-                if input_name not in sample:
-                    logger.warning(f"Input '{input_name}' not found in tokenized sample {idx}, skipping")
-                    continue
+                # Check if all samples have this input
+                if not all(input_name in sample for sample in batch_samples):
+                    logger.warning(f"Input '{input_name}' not found in all batch samples, skipping batch")
+                    break
 
-                # Convert to numpy array and save
-                input_data = np.array([sample[input_name]], dtype=np.int64)
-                input_path = os.path.join(temp_dir, f"sample_{idx}_{input_name}.npy")
+                # Stack samples to create batched array: shape (batch_size, seq_len)
+                input_data = np.array([sample[input_name] for sample in batch_samples], dtype=np.int64)
+                input_path = os.path.join(temp_dir, f"batch_{batch_idx}_{input_name}.npy")
                 np.save(input_path, input_data)
                 input_paths.append(input_path)
 
-            # Skip this sample if we couldn't save any inputs
-            if not input_paths:
-                logger.warning(f"No valid inputs found for sample {idx}, skipping")
+            # Skip this batch if we couldn't save all inputs
+            if len(input_paths) != len(model_input_names):
+                logger.warning(f"Not all inputs found for batch {batch_idx}, skipping")
                 continue
 
             # Write all input paths on one line, space-separated
             line = " ".join(input_paths)
             temp_file.write(f"{line}\n")
+            batch_idx += 1
 
     return dataset_file_path, target_columns, splits_to_try
 
@@ -515,16 +533,61 @@ def resolve_hub_repo_id(hub_model_id: str | None, hub_token: str | None = None) 
         ) from e
 
 
-def clean_intermediate_onnx_files() -> None:
+def has_rknn_config(config_path: str) -> bool:
     """
-    Clean up intermediate ONNX files created by RKNN toolkit during export.
-    These files usually match the pattern check*.onnx in the current working directory.
+    Check if a config.json file contains RKNN modifications.
+
+    Args:
+        config_path: Path to the config.json file or directory containing it.
+
+    Returns:
+        True if the config contains an "rknn" key, False otherwise.
+    """
+    try:
+        # If a directory is provided, append config.json
+        if os.path.isdir(config_path):
+            config_path = os.path.join(config_path, "config.json")
+
+        # Check if file exists
+        if not os.path.exists(config_path):
+            return False
+
+        # Load and check for "rknn" key
+        with open(config_path) as f:
+            config_dict = json.load(f)
+
+        return "rknn" in config_dict
+
+    except Exception as e:
+        logger.debug(f"Failed to check for RKNN config in {config_path}: {e}")
+        return False
+
+
+def clean_build_artifacts(output_dir: str) -> None:
+    """
+    Remove intermediate ONNX files created by RKNN toolkit during export.
+    Also remove cache directories created by huggingface_hub.
+
+    Args:
+        output_dir: Path to the output directory.
     """
     cwd = os.getcwd()
     for filename in os.listdir(cwd):
         if filename.startswith("check") and filename.endswith(".onnx"):
             with contextlib.suppress(Exception):
                 os.remove(os.path.join(cwd, filename))
+
+    cache_directories = [".cache", ".locks"]
+    for cache_dir in cache_directories:
+        cache_dir = os.path.join(cwd, cache_dir)
+        if os.path.exists(cache_dir):
+            with contextlib.suppress(Exception):
+                shutil.rmtree(cache_dir)
+    for root, dirs, _ in os.walk(cwd):
+        for dir in dirs:
+            if dir.startswith("models--"):
+                with contextlib.suppress(Exception):
+                    shutil.rmtree(os.path.join(root, dir))
 
 
 def get_file_size_str(path: str) -> str:

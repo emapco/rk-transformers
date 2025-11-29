@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import contextlib
+import json
 import logging
 import os
 import shutil
@@ -30,10 +31,11 @@ from rktransformers.constants import (
 from rktransformers.exporters.rknn.model_card import ModelCardGenerator
 
 from .utils import (
-    clean_intermediate_onnx_files,
+    clean_build_artifacts,
     download_sentence_transformer_modules_weights,
     generate_rknn_output_path,
     get_onnx_input_names,
+    has_rknn_config,
     load_model_config,
     prepare_dataset_for_quantization,
     resolve_hub_repo_id,
@@ -64,45 +66,39 @@ def export_rknn(config: RKNNConfig) -> None:
     if not config.model_name_or_path:
         raise ValueError("model_name_or_path is required in configuration")
 
-    # Capture original model ID for model card
     base_model_id = config.model_name_or_path
-    # Check if model_name_or_path is a local file
-    # Consider it local if it has .onnx extension or exists on disk
     is_local_model = config.model_name_or_path.endswith(".onnx") or os.path.exists(config.model_name_or_path)
-    # Track paths separately for different purposes:
-    # - onnx_model_path: path to the ONNX file for RKNN loading
-    # - model_config_path: path to model directory/Hub ID for config loading
-    onnx_model_path = None
-    model_config_path = None
 
     if not is_local_model:
         logger.info(f"Model path '{config.model_name_or_path}' not found locally. Treating as Hugging Face Hub ID.")
 
-        # Determine output directory for caching model files
+        # Determine output directory
         if config.output_path:
-            # Check if output_path is a file or directory
             if config.output_path.endswith(".rknn"):
-                # It's a file path, extract directory and filename
                 base_output_dir = os.path.dirname(config.output_path)
                 rknn_filename = os.path.basename(config.output_path)
             else:
-                # It's a directory path
                 base_output_dir = config.output_path
                 rknn_filename = "model.rknn"
         else:
             base_output_dir = os.getcwd()
             rknn_filename = "model.rknn"
 
-        # Extract model name from Hub ID (e.g. "answerdotai/ModernBERT-base" -> "ModernBERT-base")
         model_name = config.model_name_or_path.split("/")[-1]
         output_dir = os.path.join(base_output_dir, model_name)
-
-        # Update config.output_path to be inside this new directory
         config.output_path = os.path.join(output_dir, rknn_filename)
         logger.info(f"Exporting model from Hub to directory: {output_dir}")
 
         try:
-            # Download all model files (config, tokenizer, etc.) but exclude weights
+            # Preserve existing config.json with RKNN modifications before downloading/exporting
+            config_path = os.path.join(output_dir, "config.json")
+            preserved_config = None
+            if has_rknn_config(output_dir):
+                logger.info("Preserving existing config.json with RKNN modifications")
+                with open(config_path) as f:
+                    preserved_config = json.load(f)
+
+            # Download model files (excluding weights)
             snapshot_download(
                 repo_id=config.model_name_or_path,
                 local_dir=output_dir,
@@ -115,12 +111,7 @@ def export_rknn(config: RKNNConfig) -> None:
                 token=config.hub_token,
             )
 
-            cache_dir = os.path.join(output_dir, ".cache")
-            if os.path.exists(cache_dir):
-                shutil.rmtree(cache_dir)
-
-            # Export to ONNX using Optimum's main_export
-            # Use batch_size and max_seq_length from config for input shapes
+            # Export to ONNX (this may overwrite config.json)
             export_kwargs = {
                 "model_name_or_path": config.model_name_or_path,
                 "output": output_dir,
@@ -136,20 +127,22 @@ def export_rknn(config: RKNNConfig) -> None:
 
             main_export(**export_kwargs)
 
-            # main_export creates model.onnx in the output directory
+            # Restore preserved config if it existed
+            if preserved_config is not None:
+                logger.info("Restoring preserved config.json with RKNN modifications")
+                with open(config_path, "w") as f:
+                    json.dump(preserved_config, f, indent=2)
+
             onnx_model_path = os.path.join(output_dir, "model.onnx")
-            logger.info(f"Successfully exported to {onnx_model_path}")
-            model_config_path = output_dir  # for config loading (contains config.json)
 
         except Exception as e:
             raise RuntimeError(f"Failed to export model from Hub: {e}") from e
     else:
-        # For local models, use the ONNX file directly
+        # Local ONNX model
         onnx_model_path = config.model_name_or_path
-        # For config loading, use the directory containing the ONNX file
-        model_config_path = os.path.dirname(os.path.abspath(config.model_name_or_path))
+        output_dir = os.path.dirname(os.path.abspath(config.model_name_or_path))
 
-    model_config = load_model_config(model_config_path)  # used for auto-detection
+    model_config = load_model_config(output_dir)  # used for auto-detection
     # Auto-detect max_seq_length if not provided
     is_user_specified_seq_len = config.max_seq_length is not None
     if config.max_seq_length is None:
@@ -165,7 +158,7 @@ def export_rknn(config: RKNNConfig) -> None:
     logger.info(f"Configuring RKNN for {config.target_platform}")
     rknn.config(**config.to_dict())
 
-    # register custom operators inbetween rknn.config() and rknn.load_onnx()
+    # register custom operators in between rknn.config() and rknn.load_onnx()
     # rknn.register_custom_op()
     # Docs: 5.5 Custom Operators https://github.com/airockchip/rknn-toolkit2/blob/master/doc/02_Rockchip_RKNPU_User_Guide_RKNN_SDK_V2.3.2_EN.pdf
 
@@ -224,10 +217,11 @@ def export_rknn(config: RKNNConfig) -> None:
             config.quantization.dataset_size,
             model_dir,
             inputs,
-            sequence_length,
             config.quantization.dataset_split,
             config.quantization.dataset_subset,
             config.quantization.dataset_columns,
+            batch_size,
+            sequence_length,
         )
 
         if actual_columns and not config.quantization.dataset_columns:
@@ -238,7 +232,7 @@ def export_rknn(config: RKNNConfig) -> None:
     logger.info("Building RKNN model")
     ret = rknn.build(do_quantization=config.quantization.do_quantization, dataset=dataset_file)
     if ret != 0:
-        clean_intermediate_onnx_files()
+        clean_build_artifacts(output_dir)
         raise RuntimeError("Failed to build RKNN model!")
 
     # Determine output path based on configuration
@@ -265,13 +259,13 @@ def export_rknn(config: RKNNConfig) -> None:
     logger.info(f"Exporting RKNN model to {config.output_path}")
     ret = rknn.export_rknn(config.output_path)
     if ret != 0:
-        clean_intermediate_onnx_files()
+        clean_build_artifacts(output_dir)
         raise RuntimeError("Failed to export RKNN model!")
 
     # Resolve hub_model_id early so model card uses the resolved ID
     if config.push_to_hub:
         if not config.hub_model_id:
-            clean_intermediate_onnx_files()
+            clean_build_artifacts(output_dir)
             raise ValueError("hub_model_id is required when push_to_hub is True")
         config.hub_model_id = resolve_hub_repo_id(config.hub_model_id, config.hub_token)
     # updated config.json is required for model card generation
@@ -338,4 +332,4 @@ def export_rknn(config: RKNNConfig) -> None:
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
 
-    clean_intermediate_onnx_files()
+    clean_build_artifacts(output_dir)

@@ -81,13 +81,13 @@ class TestRKNNConfig:
         assert loaded_config.optimization.optimization_level == original_config.optimization.optimization_level
 
     def test_load_from_file(self) -> None:
-        rknn_json_path = Path(__file__).parent / "data/random_bert/rknn.json"
-        with open(rknn_json_path) as f:
+        config_json_path = Path(__file__).parent / "data/random_bert/config.json"
+        with open(config_json_path) as f:
             full_config = json.load(f)
 
         # Simulate selecting the config for "model_b1_s32_o3.rknn"
         target_key = "rknn/model_b1_s32_o3.rknn"
-        config_dict = full_config[target_key]
+        config_dict = full_config["rknn"][target_key]
 
         config = RKNNConfig.from_dict(config_dict)
 

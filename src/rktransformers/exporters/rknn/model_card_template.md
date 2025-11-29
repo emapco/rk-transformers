@@ -25,12 +25,12 @@
 
 ### Installation
 
-Install `rk-transformers` to use this model:
+Install `rk-transformers` with inference dependencies to use this model:
 
 ```bash
-pip install rk-transformers
-```
-{% if is_sentence_transformer %}
+pip install rk-transformers[inference]
+```{% if is_sentence_transformer %}
+
 #### Sentence Transformers
 
 ```python
@@ -57,40 +57,19 @@ model = RKSentenceTransformer(
         "file_name": "{{ optimized_model_path }}"
     }
 ){% endif %}
+```{% endif %}{% if usage_example %}
+
+#### RK-Transformers API
+
+{{ usage_example }}{% else %}
+#### Unsupported RKNN Model
+
+This model type is not currently supported by the RK-Transformers API. You will need to write custom inference code using `rknn-toolkit-lite2`.
+
+```bash
+pip install rknn-toolkit-lite2
 ```{% endif %}
-#### RKTransformers API
-
-```python
-from rktransformers import {{ rk_model_class }}
-from transformers import AutoTokenizer
-
-tokenizer = AutoTokenizer.from_pretrained("{{ tokenizer_path }}")
-model = {{ rk_model_class }}.from_pretrained(
-    "{{ example_model_path }}",
-    platform="{{ target_platform }}",
-    core_mask="auto",{% if example_file_name %}
-    file_name="{{ example_file_name }}"{% endif %}
-)
-
-inputs = tokenizer(
-    ["Sample text for encoding"],
-    padding="max_length",
-    max_length={{ max_seq_length }},
-    truncation=True,
-    return_tensors="np"
-)
-
-outputs = model(**inputs)
-print(outputs.shape){% if optimized_model_path %}
-
-# Load specific optimized/quantized model file
-model = {{ rk_model_class }}.from_pretrained(
-    "{{ example_model_path }}",
-    platform="{{ target_platform }}",
-    file_name="{{ optimized_model_path }}"
-){% endif %}
-```
 
 ## Configuration
 
-The full configuration for all exported RKNN models is available in the [rknn.json](./rknn.json) file.
+The full configuration for all exported RKNN models is available in the [config.json](./config.json) file.

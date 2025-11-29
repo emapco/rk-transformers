@@ -19,7 +19,7 @@ RKNN_FILE_PATTERN = r".*\.rknn$"
 
 DEFAULT_MAX_SEQ_LENGTH = 512
 DEFAULT_BATCH_SIZE = 1
-DEFAULT_OPSET = 18
+DEFAULT_OPSET = 19
 AUTO_DETECT_TEXT_FIELDS = (
     "text",
     "sentence",
@@ -40,8 +40,10 @@ IGNORE_MODEL_REPO_FILES = [
     "*.tflite",
     "*.ot",
     ".gitattributes",
+    "coreml/**",
     "openvino/**",
     "onnx/**",
+    ".cache/**",
     ".locks/**",
     "models--*/**",
 ]
@@ -97,7 +99,7 @@ QuantizedAlgorithmType = Literal["normal", "mmse", "kl_divergence", "gdq"]
 QUANTIZED_ALGORITHM_CHOICES = get_args(QuantizedAlgorithmType)
 # Quantization methods
 # layer: Per-layer quantization
-# channel: Per-channel quantization (better accuracy)
+# channel: Per-channel quantization
 # group{SIZE}: Group quantization where SIZE is multiple of 32 between 32 and 256 (e.g., group32, group64)
 QuantizedMethodType = Literal[
     "layer", "channel", "group32", "group64", "group96", "group128", "group160", "group192", "group224", "group256"
@@ -111,14 +113,20 @@ SupportedTaskType = Literal[
     "feature-extraction",
     "fill-mask",
     "sequence-classification",
+    "question-answering",
+    "token-classification",
+    "multiple-choice",
 ]
 SUPPORTED_TASK_CHOICES = get_args(SupportedTaskType)
 OpsetType = Literal[14, 15, 16, 17, 18, 19]  # ONNX opset 14 to 19 - sdpa added in 14 and rknn supports up to 19
 SUPPORTED_OPSETS = get_args(OpsetType)
 
-# Mapping from task to RKRTModel class name
+# Mapping from task to RKModel class name
 TASK_TO_RK_MODEL_CLASS = {
-    "fill-mask": "RKRTModelForMaskedLM",
-    "sequence-classification": "RKRTModelForSequenceClassification",
-    "feature-extraction": "RKRTModelForFeatureExtraction",
+    "fill-mask": "RKModelForMaskedLM",
+    "sequence-classification": "RKModelForSequenceClassification",
+    "feature-extraction": "RKModelForFeatureExtraction",
+    "question-answering": "RKModelForQuestionAnswering",
+    "token-classification": "RKModelForTokenClassification",
+    "multiple-choice": "RKModelForMultipleChoice",
 }

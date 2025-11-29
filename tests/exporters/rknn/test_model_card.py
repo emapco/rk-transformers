@@ -15,10 +15,12 @@
 import json
 import os
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from rktransformers.configuration import OptimizationConfig, QuantizationConfig, RKNNConfig
+from rktransformers.constants import TASK_TO_RK_MODEL_CLASS, SupportedTaskType
 from rktransformers.utils.import_utils import (
     is_rknn_toolkit_available,
 )
@@ -47,6 +49,7 @@ class TestModelCardGenerator:
     def test_generate_new_readme(self):
         output_file = self.generator.generate(self.config, self.output_dir)
         assert output_file == os.path.join(self.output_dir, "README.md")
+        assert output_file is not None
         assert os.path.exists(output_file)
         with open(output_file) as f:
             content = f.read()
@@ -61,7 +64,7 @@ class TestModelCardGenerator:
 
         output_file = self.generator.generate(self.config, self.output_dir)
         assert output_file == os.path.join(self.output_dir, "README.md")
-
+        assert output_file is not None
         with open(output_file) as f:
             content = f.read()
             # Check for header
@@ -84,6 +87,7 @@ class TestModelCardGenerator:
 
         output_file = self.generator.generate(self.config, self.output_dir)
         assert output_file == os.path.join(self.output_dir, "README.md")
+        assert output_file is not None
         with open(output_file) as f:
             content = f.read()
             assert "library_name: rk-transformers" in content
@@ -126,18 +130,20 @@ class TestModelCardGenerator:
         with open(os.path.join(rknn_dir, "model_w8a8.rknn"), "w") as f:
             f.write("dummy")
 
-        # Create rknn.json
+        # Create config.json with rknn key
         rknn_config = {
-            "model.rknn": {
-                "optimization": {"optimization_level": 0},
-                "quantization": {"do_quantization": False},
-            },
-            "rknn/model_w8a8.rknn": {
-                "optimization": {"optimization_level": 2},
-                "quantization": {"do_quantization": True, "quantized_dtype": "w8a8"},
-            },
+            "rknn": {
+                "model.rknn": {
+                    "optimization": {"optimization_level": 0},
+                    "quantization": {"do_quantization": False},
+                },
+                "rknn/model_w8a8.rknn": {
+                    "optimization": {"optimization_level": 2},
+                    "quantization": {"do_quantization": True, "quantized_dtype": "w8a8"},
+                },
+            }
         }
-        with open(os.path.join(self.output_dir, "rknn.json"), "w") as f:
+        with open(os.path.join(self.output_dir, "config.json"), "w") as f:
             json.dump(rknn_config, f)
 
         output_file = self.generator.generate(self.config, self.output_dir)
@@ -266,20 +272,13 @@ class TestModelCardGenerator:
             assert "RKSentenceTransformer" not in content
 
     def test_generate_readme_dynamic_task(self, temp_dir: Path) -> None:
-        """Test that the correct RKRTModel class is used based on the task."""
-        tasks = {
-            "feature-extraction": "RKRTModelForFeatureExtraction",
-            "fill-mask": "RKRTModelForMaskedLM",
-            "sequence-classification": "RKRTModelForSequenceClassification",
-            None: "RKRTModelForFeatureExtraction",  # Default
-        }
-
-        for task, expected_class in tasks.items():
+        """Test that the correct RKModel class is used based on the task."""
+        for task, expected_class in TASK_TO_RK_MODEL_CLASS.items():
             config = RKNNConfig(
                 target_platform="rk3588",
                 model_name_or_path="test/model.onnx",
                 output_path=str(temp_dir / f"model_{task}.rknn"),
-                task=task,
+                task=cast(SupportedTaskType, task),
             )
 
             generator = ModelCardGenerator()
@@ -295,6 +294,51 @@ class TestModelCardGenerator:
                 assert '"model"' in content or "model.onnx" in content
                 assert f'file_name="model_{task}.rknn"' in content  # Should specify file_name since it's not model.rknn
 
+    def test_generate_readme_unsupported_task(self, temp_dir: Path) -> None:
+        """Test that unsupported tasks show the correct message."""
+        config = RKNNConfig(
+            target_platform="rk3588",
+            model_name_or_path="test/model.onnx",
+            output_path=str(temp_dir / "model_unsupported.rknn"),
+            task=cast(SupportedTaskType, "unknown-task"),
+        )
+
+        generator = ModelCardGenerator()
+        readme_path = generator.generate(config, str(temp_dir))
+        assert readme_path is not None
+
+        with open(readme_path) as f:
+            content = f.read()
+            assert "Unsupported RKNN Model" in content
+            assert "pip install rknn-toolkit-lite2" in content
+            assert "#### RK-Transformers API" not in content
+
+    def test_generate_readme_architecture_detection(self, temp_dir: Path) -> None:
+        """Test that RKModel class is detected from architecture when task is unknown."""
+        config = RKNNConfig(
+            target_platform="rk3588",
+            model_name_or_path="test/model.onnx",
+            output_path=str(temp_dir / "model_arch.rknn"),
+            task=cast(SupportedTaskType, "unknown-task"),
+        )
+
+        # Mock PretrainedConfig with specific architecture
+        from transformers import PretrainedConfig
+
+        pretrained_config = PretrainedConfig()
+        pretrained_config.architectures = ["BertForTokenClassification"]
+
+        generator = ModelCardGenerator(pretrained_config=pretrained_config)
+        readme_path = generator.generate(config, str(temp_dir))
+        assert readme_path is not None
+
+        with open(readme_path) as f:
+            content = f.read()
+            # Should detect RKModelForTokenClassification from BertForTokenClassification
+            assert "RKModelForTokenClassification" in content
+            assert "RK-Transformers API" in content
+            assert "Unsupported RKNN Model" not in content
+
     def test_generate_readme_default_model_name(self, temp_dir: Path) -> None:
         """Test usage example when model name is default model.rknn"""
         config = RKNNConfig(
@@ -304,6 +348,7 @@ class TestModelCardGenerator:
         )
         generator = ModelCardGenerator()
         readme_path = generator.generate(config, str(temp_dir))
+        assert readme_path is not None
 
         with open(readme_path) as f:
             content = f.read()

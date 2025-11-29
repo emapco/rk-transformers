@@ -12,12 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 
 from .configuration import OptimizationConfig, QuantizationConfig, RKNNConfig
 from .integrations import RKCrossEncoder, RKSentenceTransformer
-from .modeling import RKRTModel, RKRTModelForFeatureExtraction, RKRTModelForMaskedLM, RKRTModelForSequenceClassification
+from .modeling import (
+    RKModel,
+    RKModelForFeatureExtraction,
+    RKModelForMaskedLM,
+    RKModelForMultipleChoice,
+    RKModelForQuestionAnswering,
+    RKModelForSequenceClassification,
+    RKModelForTokenClassification,
+)
 
 __all__ = [
     # Config
@@ -28,8 +36,11 @@ __all__ = [
     "RKCrossEncoder",
     "RKSentenceTransformer",
     # Models
-    "RKRTModel",
-    "RKRTModelForFeatureExtraction",
-    "RKRTModelForMaskedLM",
-    "RKRTModelForSequenceClassification",
+    "RKModel",
+    "RKModelForFeatureExtraction",
+    "RKModelForMaskedLM",
+    "RKModelForMultipleChoice",
+    "RKModelForQuestionAnswering",
+    "RKModelForSequenceClassification",
+    "RKModelForTokenClassification",
 ]

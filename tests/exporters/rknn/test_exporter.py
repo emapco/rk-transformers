@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from rktransformers.configuration import OptimizationConfig, QuantizationConfig, RKNNConfig
@@ -53,10 +54,7 @@ class TestLoadModelConfig:
 
     @patch("rktransformers.exporters.rknn.utils.AutoConfig")
     def test_load_model_config_auto_config(self, mock_auto_config: MagicMock) -> None:
-        mock_config_instance = MagicMock()
-        mock_config_instance.to_dict.return_value = {"architectures": ["BertForSequenceClassification"]}
-        mock_auto_config.from_pretrained.return_value = mock_config_instance
-
+        mock_auto_config.from_pretrained.return_value = {"architectures": ["BertForSequenceClassification"]}
         config = load_model_config("dummy-model-id")
         assert config == {"architectures": ["BertForSequenceClassification"]}
         mock_auto_config.from_pretrained.assert_called_with("dummy-model-id", trust_remote_code=True)
@@ -65,9 +63,9 @@ class TestLoadModelConfig:
     def test_load_model_config_failure(self, mock_auto_config: MagicMock) -> None:
         mock_auto_config.from_pretrained.side_effect = Exception("Failed to load")
 
-        # Should return empty dict on failure
+        # Should return None on failure
         config = load_model_config("non-existent-model")
-        assert config == {}
+        assert config is None
 
 
 class TestRKNNExporter:
@@ -564,6 +562,71 @@ class TestDatasetPreparation:
             for line in lines:
                 paths = line.split()
                 assert len(paths) == 3, f"Expected 3 inputs, got {len(paths)}"
+
+        os.remove(dataset_file)
+        shutil.rmtree(os.path.dirname(dataset_file))
+
+    @patch("rktransformers.exporters.rknn.utils.load_dataset")
+    @patch("rktransformers.exporters.rknn.utils.concatenate_datasets")
+    @patch("rktransformers.exporters.rknn.utils.AutoTokenizer")
+    def test_prepare_dataset_with_batch_size(
+        self,
+        mock_tokenizer_cls: MagicMock,
+        mock_concat: MagicMock,
+        mock_load_dataset: MagicMock,
+    ) -> None:
+        """Test dataset preparation with custom batch size."""
+        mock_dataset = MagicMock()
+        mock_dataset.column_names = ["text"]
+
+        # Create enough samples for 2 complete batches with batch_size=4
+        batch_size = 4
+        num_samples = 8
+        mock_dataset.__len__.return_value = num_samples
+        mock_dataset.select.return_value = mock_dataset
+
+        tokenized_samples = []
+        for i in range(num_samples):
+            tokenized_samples.append(
+                {
+                    "input_ids": [i, i + 1, i + 2],  # Each sample has unique values
+                    "attention_mask": [1, 1, 1],
+                }
+            )
+        mock_dataset.map.return_value = tokenized_samples
+
+        mock_load_dataset.return_value = mock_dataset
+        mock_concat.return_value = mock_dataset
+
+        mock_tokenizer = MagicMock()
+        mock_tokenizer_cls.from_pretrained.return_value = mock_tokenizer
+
+        dataset_file, columns, splits = prepare_dataset_for_quantization(
+            "test_dataset", num_samples, "tokenizer_path", ["input_ids", "attention_mask"], batch_size=batch_size
+        )
+
+        assert os.path.exists(dataset_file)
+        assert columns == ["text"]
+
+        # Verify the batched numpy arrays
+        with open(dataset_file) as f:
+            lines = f.readlines()
+            assert len(lines) == 2, f"Expected 2 batches, got {len(lines)}"
+
+            # Check the first batch
+            first_line = lines[0].strip()
+            paths = first_line.split()
+            assert len(paths) == 2, f"Expected 2 inputs, got {len(paths)}"
+
+            for path in paths:
+                assert os.path.exists(path)
+                data = np.load(path)
+                assert data.shape[0] == batch_size, f"Expected batch size {batch_size}, got {data.shape[0]}"
+                assert data.shape[1] == 3, f"Expected seq_len 3, got {data.shape[1]}"
+
+                if "input_ids" in path:
+                    unique_first_vals = np.unique(data[:, 0])
+                    assert len(unique_first_vals) == batch_size, "Expected unique samples, got repeated samples"
 
         os.remove(dataset_file)
         shutil.rmtree(os.path.dirname(dataset_file))

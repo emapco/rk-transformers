@@ -224,10 +224,13 @@ class RKNNConfig:
         task: Task type for export (default: "auto").
             - 'auto': Uses optimum to detect the task based on model architecture.
                 - Can be used to export models supported by optimum and not rk-transformers runtime functionality,
-                  in which case, the user is responsible for developing inference code using rknn-toolkit-lite2 library or subclassing `rktransformers.RKRTModel`.
+                  in which case, the user is responsible for developing inference code using rknn-toolkit-lite2 library or subclassing `rktransformers.RKModel`.
             - *ForSequenceClassification -> sequence-classification
             - *ForMaskedLM -> fill-mask
             - Fallback: feature-extraction (e.g. BertModel)
+        task_kwargs: Task-specific keyword arguments for ONNX export (dict[str, Any]).
+            Example: For multiple-choice tasks, use {"num_choices": 4}.
+            These kwargs are passed directly to optimum's main_export function.
     """  # noqa: E501
 
     target_platform: PlatformType = "rk3588"
@@ -241,6 +244,7 @@ class RKNNConfig:
     # Model dimensions
     batch_size: int = DEFAULT_BATCH_SIZE
     max_seq_length: int | None = DEFAULT_MAX_SEQ_LENGTH
+    task_kwargs: dict[str, Any] | None = None
 
     # RKNN-specific parameters
     float_dtype: str = "float16"
@@ -301,7 +305,7 @@ class RKNNConfig:
 
     def to_export_dict(self) -> dict[str, Any]:
         """
-        Convert complete config to dictionary for export/persistence in rknn.json.
+        Convert complete config to dictionary for export/persistence in config.json ("rknn" key).
         This includes ALL configuration parameters for reproducibility.
         """
         export_dict = {
@@ -311,6 +315,7 @@ class RKNNConfig:
             "model_input_names": self.model_input_names,
             "batch_size": self.batch_size,
             "max_seq_length": self.max_seq_length,
+            "task_kwargs": self.task_kwargs,
             "float_dtype": self.float_dtype,
             # Platform configuration
             "target_platform": self.target_platform,

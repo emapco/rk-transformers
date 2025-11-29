@@ -16,8 +16,10 @@
 
 import shutil
 import tempfile
+from collections import OrderedDict
 from collections.abc import Generator
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from transformers import PretrainedConfig
@@ -64,3 +66,16 @@ def pretrained_config() -> PretrainedConfig:
 def random_bert_model_path(test_data_dir: Path) -> Path:
     """Return path to the random BERT test model."""
     return test_data_dir / "random_bert"
+
+
+@pytest.fixture
+def mock_rknn_lite() -> Generator[MagicMock, None, None]:
+    """Mock RKNNLite class and instance."""
+    with patch("rktransformers.modeling_utils.RKNNLite") as mock_class:
+        mock_instance = mock_class.return_value
+        mock_instance.load_rknn.return_value = 0
+        mock_instance.init_runtime.return_value = 0
+        mock_instance.list_support_target_platform.return_value = OrderedDict(
+            [("filled_target_platform", ["rk3588"]), ("support_target_platform", ["rk3588"])]
+        )
+        yield mock_class

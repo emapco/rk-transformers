@@ -12,17 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextlib
-import importlib.util
-import json
 import os
 import re
 import shutil
-import sys
-from abc import ABC
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Generic, Literal, overload
 
 import numpy as np
 import torch
@@ -33,14 +28,20 @@ from transformers import (
     AutoConfig,
     AutoModel,
     AutoModelForMaskedLM,
+    AutoModelForMultipleChoice,
+    AutoModelForQuestionAnswering,
     AutoModelForSequenceClassification,
+    AutoModelForTokenClassification,
     AutoTokenizer,
     PretrainedConfig,
 )
 from transformers.modeling_outputs import (
     BaseModelOutput,
     MaskedLMOutput,
+    MultipleChoiceModelOutput,
+    QuestionAnsweringModelOutput,
     SequenceClassifierOutput,
+    TokenClassifierOutput,
 )
 from transformers.utils import logging
 from transformers.utils.doc import (
@@ -48,8 +49,8 @@ from transformers.utils.doc import (
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
 )
-from transformers.utils.generic import ModelOutput
 from transformers.utils.hub import cached_file, is_offline_mode
+from typing_extensions import Unpack
 
 from .configuration import RKNNConfig
 from .constants import (
@@ -58,27 +59,21 @@ from .constants import (
     CoreMaskType,
     PlatformType,
 )
-from .utils.env_utils import get_edge_host_platform
+from .modeling_utils import MODEL_OUTPUT_T, PreTrainedModel, RKNNRuntime, TENSOR_Ts
+from .utils.import_utils import (
+    is_rknn_toolkit_lite_available,
+)
 from .utils.logging_utils import suppress_output
 
 logger = logging.get_logger(__name__)
 
-if importlib.util.find_spec("rknnlite") is not None:
-    from rknnlite.api import RKNNLite  # pyright: ignore[reportMissingImports]
-elif importlib.util.find_spec("rknn") is not None:
-    # Fallback to RKNN if RKNNLite is not available. RKNN is a superset of RKNNLite.
-    from rknn.api import RKNN as RKNNLite  # pyright: ignore[reportMissingImports]
-else:
-    logger.error("RKNN Toolkit Lite is not installed. Please install it via pip:")
-    logger.error("  pip install rknn-toolkit-lite2==2.3.2")
-    sys.exit(-1)
-
 
 _TOKENIZER_FOR_DOC = "AutoTokenizer"
 RKNN_MODEL_END_DOCSTRING = r"""
-    This model inherits from [`~rktransformers.modeling.RKRTModel`], check its documentation for the generic methods the
+    This model inherits from [`~rktransformers.modeling.RKModel`], check its documentation for the generic methods the
     library implements for all its model (such as downloading or saving).
 """
+
 FROM_PRETRAINED_START_DOCSTRING = r"""
     Instantiate a pretrained model from a pre-trained model configuration.
 
@@ -117,6 +112,7 @@ FROM_PRETRAINED_START_DOCSTRING = r"""
             git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
             identifier allowed by git.
 """  # noqa: E501
+
 TEXT_INPUTS_DOCSTRING = r"""
     Args:
         input_ids (`Union[torch.Tensor, np.ndarray, None]` of shape `({0})`, defaults to `None`):
@@ -131,14 +127,11 @@ TEXT_INPUTS_DOCSTRING = r"""
 """
 
 
-# workaround to enable compatibility between rk-transformers models and transformers pipelines
-class PreTrainedModel(ABC):  # noqa: B024
-    pass
-
-
-class RKRTModel(
+class RKModel(
+    RKNNRuntime,
     PreTrainedModel,
     ModelHubMixin,
+    Generic[MODEL_OUTPUT_T, Unpack[TENSOR_Ts]],
     library_name="rk-transformers",
     tags=["rknn", "rockchip", "npu"],
 ):
@@ -150,27 +143,27 @@ class RKRTModel(
     def __init__(
         self,
         *,
+        model_id: str | None = None,
         config: PretrainedConfig | None = None,
         model_path: str | Path,
         platform: PlatformType | None = None,
         core_mask: CoreMaskType = "auto",
         rknn_config: RKNNConfig | None = None,
         max_seq_length: int = 512,
+        batch_size: int = 1,
     ) -> None:
         if config is None:
-            raise ValueError("A Hugging Face config is required to build an RKRT model.")
+            raise ValueError("A Hugging Face config is required to build an RKModel.")
 
+        super().__init__(model_path=model_path, platform=platform, core_mask=core_mask, rknn_config=rknn_config)
+        self.model_id = model_id
         self.config = config
-        self.model_path = Path(model_path)
-        self.model_filename = self.model_path.name
-        self.platform = platform or get_edge_host_platform()
-        self.core_mask = core_mask
-        self.rknn_config = rknn_config
 
-        # Set defaults for input_names and max_seq_length
+        # Set defaults for input_names, batch_size, and max_seq_length
         self.input_names = ["input_ids", "attention_mask"]
         if getattr(config, "type_vocab_size", 1) > 1:
             self.input_names.append("token_type_ids")
+        self.batch_size = batch_size
         self.max_seq_length = max_seq_length
 
         if self.rknn_config:
@@ -183,28 +176,44 @@ class RKRTModel(
             if hasattr(self.rknn_config, "batch_size"):
                 self.batch_size = self.rknn_config.batch_size
 
+        self.pad_token_id = 0
+        self.pad_token_type_id = 0
+        self.pad_attention_mask = 0  # Huggingface transformers uses 0 for padding attention mask
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
-            self.pad_token_id = self.tokenizer.pad_token_id
-            self.pad_token_type_id = self.tokenizer.pad_token_type_id or 0
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+            if hasattr(self.tokenizer, "pad_token_id") and self.tokenizer.pad_token_id is not None:
+                self.pad_token_id = self.tokenizer.pad_token_id
+            if hasattr(self.tokenizer, "pad_token_type_id") and self.tokenizer.pad_token_type_id is not None:
+                self.pad_token_type_id = self.tokenizer.pad_token_type_id
         except Exception:
             logger.warning("Failed to load tokenizer. Using default padding IDs (0).")
-            self.pad_token_id = 0
-            self.pad_token_type_id = 0
-        self.pad_attention_mask = 0  # Huggingface transformers uses 0 for padding attention mask
-
-        self.rknn = self._load_rknn_model()
 
         # From optimum.onnxruntime.modeling.ORTModel
         AutoConfig.register(self.model_type, AutoConfig)
         if hasattr(self.auto_model_class, "register"):
             self.auto_model_class.register(AutoConfig, self.__class__)
 
-    def __call__(self, *args, **kwargs):
-        """Make RKRTModel callable to work with Transformers/SentenceTransformers"""
-        return self.forward(*args, **kwargs)
+    @overload
+    def __call__(self, *args: Any, return_dict: Literal[False], **kwargs: Any) -> tuple[Unpack[TENSOR_Ts]]: ...  # pyright: ignore[reportOverlappingOverload]
 
-    def forward(self, *args: Any, **kwargs: Any) -> ModelOutput | tuple[torch.Tensor | np.ndarray] | None:
+    @overload
+    def __call__(self, *args: Any, return_dict: Literal[True], **kwargs: Any) -> MODEL_OUTPUT_T: ...
+
+    @overload
+    def __call__(self, *args: Any, **kwargs: Any) -> MODEL_OUTPUT_T: ...
+
+    # return_dict omitted ->  MODEL_OUTPUT_T
+    # return_dict=True -> MODEL_OUTPUT_T
+    # return_dict=False -> tuple[Unpack[TENSOR_Ts]]
+    def __call__(
+        self,
+        *args: Any,
+        return_dict: bool = True,
+        **kwargs: Any,
+    ) -> MODEL_OUTPUT_T | tuple[Unpack[TENSOR_Ts]]:
+        return self.forward(*args, return_dict=return_dict, **kwargs)
+
+    def forward(self, *args: Any, **kwargs: Any) -> MODEL_OUTPUT_T | tuple[Unpack[TENSOR_Ts]]:
         """Define the computation performed at every call.
 
         Should be overridden by all subclasses.
@@ -216,93 +225,9 @@ class RKRTModel(
         """Return the device on which the model is stored."""
         return torch.device("cpu")
 
-    def to(self, device: torch.device | str) -> "RKRTModel":
-        """No-op for RKRTModel. For compatibility with Hugging Face Transformers Pipelines."""
+    def to(self, device: torch.device | str) -> "RKModel":
+        """No-op for RKModel. For compatibility with Hugging Face Transformers Pipelines."""
         return self
-
-    def _release(self) -> None:
-        """Release RKNNLite resources following RKNN-toolkit2 best practices."""
-        if getattr(self, "rknn", None) is not None:
-            assert self.rknn is not None
-            with contextlib.suppress(Exception), suppress_output():
-                self.rknn.release()
-            self.rknn = None
-
-    def __del__(self) -> None:  # pragma: no cover - destructor safety
-        self._release()
-
-    def list_model_compatible_platform(self) -> dict[str, Any] | None:
-        """
-        List supported platforms for the loaded model.
-        Returns a dictionary of supported platforms or None if the check fails.
-        """
-        if self.rknn is None:
-            return None
-        with suppress_output():
-            if hasattr(self.rknn, "list_support_target_platform") and callable(self.rknn.list_support_target_platform):  # type: ignore
-                return self.rknn.list_support_target_platform(self.model_path.as_posix())  # type: ignore
-        return None
-
-    def _load_rknn_model(self) -> RKNNLite:
-        """Load the RKNN graph and initialize the runtime."""
-        if not self.model_path.exists():
-            raise FileNotFoundError(f"RKNN model not found: {self.model_path}")
-
-        # Suppress RKNNLite C-level logging
-        with suppress_output():
-            rknn = RKNNLite(verbose=False)
-            logger.debug("Loading RKNN model from %s", self.model_path)
-            ret = rknn.load_rknn(self.model_path.as_posix())
-        if ret != 0:
-            raise RuntimeError("Failed to load RKNN model")
-
-        # Check model-platform compatibility
-        supported_platforms = None
-        if hasattr(rknn, "list_support_target_platform") and callable(rknn.list_support_target_platform):  # type: ignore
-            with suppress_output():
-                supported_platforms: dict[str, Any] | None = rknn.list_support_target_platform(
-                    self.model_path.as_posix()
-                )  # type: ignore
-
-        if supported_platforms is not None:
-            # The return value is an OrderedDict with a key 'support_target_platform' and 'filled_target_platform'
-            # containing a list of supported platforms.
-            # Note: Only the 'support_target_platform' is relevant for compatibility check.
-            support_platforms = [p.lower() for p in supported_platforms.get("support_target_platform", [])]
-            if self.platform is not None and len(support_platforms) > 0 and self.platform not in support_platforms:
-                raise RuntimeError(
-                    f"The model is not compatible with the current platform '{self.platform}'. "
-                    f"Supported platforms: {support_platforms}"
-                )
-
-        logger.debug(
-            "Initializing RKNN runtime (platform=%s, core_mask=%s)",
-            self.platform,
-            self.core_mask,
-        )
-        if self.platform in {"rk3588", "rk3576"}:
-            core_mask_map = {
-                "auto": RKNNLite.NPU_CORE_AUTO,
-                "0": RKNNLite.NPU_CORE_0,
-                "1": RKNNLite.NPU_CORE_1,
-                "2": RKNNLite.NPU_CORE_2,
-                "0_1": RKNNLite.NPU_CORE_0_1,
-                "0_1_2": RKNNLite.NPU_CORE_0_1_2,
-                "all": RKNNLite.NPU_CORE_ALL,
-            }
-            npu_core = core_mask_map.get(self.core_mask, RKNNLite.NPU_CORE_AUTO)
-            with suppress_output():
-                ret = rknn.init_runtime(core_mask=npu_core)
-                if ret != 0:
-                    ret = rknn.init_runtime(target=self.platform, core_mask=npu_core)
-        else:
-            with suppress_output():
-                ret = rknn.init_runtime()
-
-        if ret != 0:
-            raise RuntimeError("Failed to initialize RKNN runtime")
-
-        return rknn
 
     def _tensor_to_numpy(self, tensor: torch.Tensor | np.ndarray, dtype: np.dtype[Any]) -> np.ndarray:
         if tensor is None:
@@ -342,36 +267,52 @@ class RKRTModel(
         tensor: torch.Tensor | np.ndarray,
         padding_id: int,
         use_torch: bool,
+        target_shape: tuple[int, ...] | None = None,
     ) -> torch.Tensor | np.ndarray:
         """Pad tensor to match model's expected input dimensions.
 
-        Pads the sequence length (dim=1) to self.max_seq_length and
-        batch size (dim=0) to self.batch_size if it's defined.
+        Handles arbitrary tensor ranks (2D for standard tasks, 3D for multiple-choice, etc.)
+        by padding each dimension independently to match the target shape.
 
         Args:
-            tensor: Input tensor to pad (shape: [batch, seq_len])
+            tensor: Input tensor to pad (e.g., shape: [batch, seq_len] or [batch, num_choices, seq_len])
+            padding_id: Value to use for padding
             use_torch: Whether to use PyTorch or NumPy for padding
+            target_shape: Target shape for the tensor. If None, defaults to 2D padding behavior
+                         using self.batch_size and self.max_seq_length.
 
         Returns:
-            Padded tensor with shape [batch_size, max_seq_length]
+            Padded tensor with shape matching target_shape
         """
-        current_batch, current_length = tensor.shape[0], tensor.shape[1]
+        # Default to 2D padding for backward compatibility
+        if target_shape is None:
+            target_shape = (getattr(self, "batch_size", tensor.shape[0]), self.max_seq_length)
 
-        target_length = self.max_seq_length
-        target_batch = getattr(self, "batch_size", current_batch)
+        if len(target_shape) != len(tensor.shape):
+            raise ValueError(
+                f"Target shape rank ({len(target_shape)}) must match tensor rank ({len(tensor.shape)}). "
+                f"Got target_shape={target_shape}, tensor.shape={tensor.shape}"
+            )
 
-        if current_batch >= target_batch and current_length >= target_length:
+        needs_padding = any(current < target for current, target in zip(tensor.shape, target_shape, strict=True))
+        if not needs_padding:
             return tensor
 
-        length_pad = max(0, target_length - current_length)
-        batch_pad = max(0, target_batch - current_batch)
-
+        # Calculate padding for each dimension
+        # Padding goes at the "end" of each dimension (right/bottom)
         if use_torch:
-            # Pad sequence length (right), then batch size (bottom)
-            tensor = torch.nn.functional.pad(tensor, (0, length_pad, 0, batch_pad), value=padding_id)
+            # PyTorch pad format: (dim_n_before, dim_n_after, ..., dim_0_before, dim_0_after)
+            # We only pad at the end, so all "before" values are 0
+            pad_values: list[int] = []
+            for current_dim, target_dim in reversed(list(zip(tensor.shape, target_shape, strict=True))):
+                pad_values.extend([0, max(0, target_dim - current_dim)])  # (before, after)
+            tensor = torch.nn.functional.pad(tensor, tuple(pad_values), value=padding_id)  # type: ignore
         else:
-            # NumPy padding: ((before_batch, after_batch), (before_seq, after_seq))
-            tensor = np.pad(tensor, ((0, batch_pad), (0, length_pad)), constant_values=padding_id)
+            # NumPy pad format: ((dim_0_before, dim_0_after), (dim_1_before, dim_1_after), ...)
+            pad_width = [
+                (0, max(0, target - current)) for current, target in zip(tensor.shape, target_shape, strict=True)
+            ]
+            tensor = np.pad(tensor, pad_width, constant_values=padding_id)
 
         return tensor
 
@@ -380,18 +321,44 @@ class RKRTModel(
         input_ids: torch.Tensor | np.ndarray,
         attention_mask: torch.Tensor | np.ndarray | None,
         token_type_ids: torch.Tensor | np.ndarray | None,
-    ) -> tuple[bool, dict[str, torch.Tensor | np.ndarray | None], int]:
+        input_shape: tuple[int, ...] | None = None,
+    ) -> tuple[bool, dict[str, torch.Tensor | np.ndarray | None], tuple[int, ...]]:
+        """Prepare text inputs for RKNN inference with padding.
+
+        Args:
+            input_ids: Input token IDs
+            attention_mask: Attention mask
+            token_type_ids: Token type IDs (optional)
+            input_shape: Expected input shape (e.g., [batch_size, seq_len] for 2D,
+                        [batch_size, num_choices, seq_len] for 3D). If None, defaults
+                        to 2D shape using self.batch_size and self.max_seq_length.
+
+        Returns:
+            Tuple of (use_torch, model_inputs, original_shape)
+        """
         if input_ids is None:
-            raise ValueError("`input_ids` is required for RKRT text inference.")
+            raise ValueError("`input_ids` is required for RKModel text inference.")
 
         use_torch = isinstance(input_ids, torch.Tensor)
-        original_batch_size = input_ids.shape[0]
-        input_ids = self._pad_to_model_input_dimensions(input_ids, padding_id=self.pad_token_id, use_torch=use_torch)
+        original_shape = tuple(input_ids.shape)
+
+        # Calculate target shape
+        if input_shape is None:
+            # Default 2D behavior: [batch_size, seq_len]
+            target_shape = (getattr(self, "batch_size", original_shape[0]), self.max_seq_length)
+        else:
+            # Use provided input_shape, filling in dimensions as needed
+            target_shape = input_shape
+
+        # Pad inputs to target shape
+        input_ids = self._pad_to_model_input_dimensions(
+            input_ids, padding_id=self.pad_token_id, use_torch=use_torch, target_shape=target_shape
+        )
 
         if attention_mask is None:
             attention_mask = self._ones_like(input_ids, use_torch)
         attention_mask = self._pad_to_model_input_dimensions(
-            attention_mask, padding_id=self.pad_attention_mask, use_torch=use_torch
+            attention_mask, padding_id=self.pad_attention_mask, use_torch=use_torch, target_shape=target_shape
         )
 
         if "token_type_ids" in self.input_names:
@@ -399,7 +366,7 @@ class RKRTModel(
                 token_type_ids = self._zeros_like(input_ids, use_torch)  # Use padded input_ids as reference
             else:
                 token_type_ids = self._pad_to_model_input_dimensions(
-                    token_type_ids, padding_id=self.pad_token_type_id, use_torch=use_torch
+                    token_type_ids, padding_id=self.pad_token_type_id, use_torch=use_torch, target_shape=target_shape
                 )
 
         return (
@@ -409,7 +376,7 @@ class RKRTModel(
                 "attention_mask": attention_mask,
                 "token_type_ids": token_type_ids,
             },
-            original_batch_size,
+            original_shape,
         )
 
     def _run_text_model(
@@ -423,17 +390,26 @@ class RKRTModel(
             tensor = model_inputs.get(name)
             if tensor is None:
                 continue
-            ordered_inputs.append(self._tensor_to_numpy(tensor, np.dtype(np.int64)))
+            ordered_inputs.append(self._tensor_to_numpy(tensor, np.dtype(np.int16)))
 
         if self.rknn is None:
             raise RuntimeError("RKNN runtime has been released and can no longer run inference.")
 
         # Suppress RKNN inference logs
         with suppress_output():
-            outputs = self.rknn.inference(inputs=ordered_inputs)
+            if is_rknn_toolkit_lite_available():
+                # data_type: int8 | uint8 | int16 | float16 | float32 - limitation with rknn MM API/Hardware
+                # This an issue for models with embeddings since they require int64 inputs.
+                outputs = self.rknn.inference(inputs=ordered_inputs, data_type="int16")  # type: ignore
+            else:
+                outputs = self.rknn.inference(inputs=ordered_inputs)
         if outputs is None:
             input_summaries = [f"shape={arr.shape}, dtype={arr.dtype}" for arr in ordered_inputs]
-            raise RuntimeError(f"RKNN inference returned None - input summary: {input_summaries}")
+            raise RuntimeError(
+                "RKNN inference returned None. "
+                "This is likely due to a mismatch between model input shapes and the given inputs. "
+                f"Input summary: {input_summaries}"
+            )
         if len(outputs) < len(expected_outputs):
             logger.error(
                 "RKNN inference output mismatch: expected %d outputs (%s), got %d outputs",
@@ -612,7 +588,6 @@ class RKRTModel(
         # rknn options
         platform: PlatformType | None = None,
         core_mask: CoreMaskType = "auto",
-        rknn_config: RKNNConfig | None = None,
         # hub options
         subfolder: str = "",
         revision: str | None = None,
@@ -626,7 +601,7 @@ class RKRTModel(
         # file options
         file_name: str | None = None,
         **model_kwargs: Any,
-    ) -> "RKRTModel":
+    ):
         cache_dir = cache_dir or HF_HUB_CACHE
 
         if is_offline_mode() and not local_files_only:
@@ -689,45 +664,6 @@ class RKRTModel(
                 proxies=proxies,
             )
 
-        # Load rknn.json to get specific model configuration if available
-        model_rknn_config = None
-        rknn_json_path = None
-
-        # Try to load rknn.json using cached_file for both local and remote models
-        if os.path.isdir(model_id):
-            # Local directory
-            local_rknn_path = Path(model_id) / "rknn.json"
-            if local_rknn_path.exists():
-                rknn_json_path = local_rknn_path
-        else:
-            # Remote model or cached model - use cached_file
-            with contextlib.suppress(Exception):
-                rknn_json_path = cls._cached_file(
-                    model_id,
-                    filename="rknn.json",
-                    subfolder=subfolder,
-                    local_files_only=local_files_only,
-                    force_download=force_download,
-                    cache_dir=cache_dir,
-                    revision=revision,
-                    token=token,
-                    proxies=proxies,
-                )
-
-        if rknn_json_path:
-            try:
-                with open(rknn_json_path) as f:
-                    full_config = json.load(f)
-
-                # Match model filename to keys in rknn.json (e.g. "rknn/model.rknn")
-                filename = model_path.name
-                for key, conf in full_config.items():
-                    if key.endswith(filename):
-                        model_rknn_config = RKNNConfig.from_dict(conf)
-                        break
-            except Exception as e:
-                logger.warning(f"Failed to load rknn.json: {e}")
-
         resolved_config = cls._resolve_config(
             model_id,
             config,
@@ -740,7 +676,31 @@ class RKRTModel(
             proxies=proxies,
         )
 
+        # Try to get rknn config from the resolved config object
+        root_rknn_config = {}
+        if hasattr(resolved_config, "rknn"):
+            root_rknn_config = resolved_config.rknn
+        elif isinstance(resolved_config, dict) and "rknn" in resolved_config:
+            root_rknn_config = resolved_config["rknn"]
+
+        model_rknn_config = None
+        if root_rknn_config:
+            # Match model filename to keys in rknn config (e.g. "rknn/model.rknn")
+            filename = model_path.name
+            for key, conf in root_rknn_config.items():
+                if key.endswith(filename):
+                    try:
+                        model_rknn_config = RKNNConfig.from_dict(conf)
+                        logger.info(f"Loaded RKNN config for {filename}")
+                        break
+                    except Exception as e:
+                        logger.warning(f"Failed to parse RKNN config for {key}: {e}")
+
+        if not model_rknn_config:
+            logger.warning("RKNN config not found in config.json. Use default batch_size=1 and max_seq_length=512.")
+
         return cls(
+            model_id=model_id,
             config=resolved_config,
             model_path=model_path,
             platform=platform,
@@ -772,7 +732,7 @@ class RKRTModel(
         # file options
         file_name: str | None = None,
         **model_kwargs: Any,
-    ) -> "RKRTModel":
+    ):
         return super().from_pretrained(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             config=config,
@@ -813,7 +773,7 @@ FEATURE_EXTRACTION_EXAMPLE = r"""
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
-class RKRTModelForFeatureExtraction(RKRTModel):
+class RKModelForFeatureExtraction(RKModel[BaseModelOutput, torch.Tensor | np.ndarray]):
     """RKNN model for feature extraction tasks."""
 
     auto_model_class = AutoModel
@@ -822,7 +782,7 @@ class RKRTModelForFeatureExtraction(RKRTModel):
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + FEATURE_EXTRACTION_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
-            model_class="RKRTModelForFeatureExtraction",
+            model_class="RKModelForFeatureExtraction",
             checkpoint="rk-transformers/all-MiniLM-L6-v2",
         )
     )
@@ -834,13 +794,11 @@ class RKRTModelForFeatureExtraction(RKRTModel):
         *,
         return_dict: bool = True,
         **kwargs: Any,
-    ) -> BaseModelOutput | tuple[torch.Tensor | np.ndarray]:
+    ):
         self._warn_on_unhandled_inputs(kwargs)
-        use_torch, model_inputs, original_batch_size = self._prepare_text_inputs(
-            input_ids, attention_mask, token_type_ids
-        )
+        use_torch, model_inputs, original_shape = self._prepare_text_inputs(input_ids, attention_mask, token_type_ids)
         outputs = self._run_text_model(use_torch, model_inputs, ["last_hidden_state"])
-        last_hidden_state = outputs["last_hidden_state"][:original_batch_size]
+        last_hidden_state = outputs["last_hidden_state"][: original_shape[0]]
         if not return_dict:
             return (last_hidden_state,)
         return BaseModelOutput(last_hidden_state=last_hidden_state)  # type: ignore[arg-type]
@@ -862,13 +820,13 @@ MASKED_LM_EXAMPLE = r"""
     >>> outputs = model(**inputs)
     >>> logits = outputs.logits
     >>> list(logits.shape)
-    [1, 8, 28996]
+    [1, 512, 30522]
     ```
 """
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
-class RKRTModelForMaskedLM(RKRTModel):
+class RKModelForMaskedLM(RKModel[MaskedLMOutput, torch.Tensor | np.ndarray]):
     """RKNN model for masked language modeling tasks."""
 
     auto_model_class = AutoModelForMaskedLM
@@ -877,7 +835,7 @@ class RKRTModelForMaskedLM(RKRTModel):
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + MASKED_LM_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
-            model_class="RKRTModelForMaskedLM",
+            model_class="RKModelForMaskedLM",
             checkpoint="rk-transformers/bert-base-uncased",
         )
     )
@@ -889,13 +847,11 @@ class RKRTModelForMaskedLM(RKRTModel):
         *,
         return_dict: bool = True,
         **kwargs: Any,
-    ) -> MaskedLMOutput | tuple[torch.Tensor | np.ndarray]:
+    ):
         self._warn_on_unhandled_inputs(kwargs)
-        use_torch, model_inputs, original_batch_size = self._prepare_text_inputs(
-            input_ids, attention_mask, token_type_ids
-        )
+        use_torch, model_inputs, original_shape = self._prepare_text_inputs(input_ids, attention_mask, token_type_ids)
         outputs = self._run_text_model(use_torch, model_inputs, ["logits"])
-        logits = outputs["logits"][:original_batch_size]
+        logits = outputs["logits"][: original_shape[0]]
         if not return_dict:
             return (logits,)
         return MaskedLMOutput(logits=logits)  # type: ignore[arg-type]
@@ -923,7 +879,7 @@ SEQUENCE_CLASSIFICATION_EXAMPLE = r"""
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
-class RKRTModelForSequenceClassification(RKRTModel):
+class RKModelForSequenceClassification(RKModel[SequenceClassifierOutput, torch.Tensor | np.ndarray]):
     """RKNN model for sequence classification/regression tasks."""
 
     auto_model_class = AutoModelForSequenceClassification
@@ -932,7 +888,7 @@ class RKRTModelForSequenceClassification(RKRTModel):
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + SEQUENCE_CLASSIFICATION_EXAMPLE.format(
             processor_class=_TOKENIZER_FOR_DOC,
-            model_class="RKRTModelForSequenceClassification",
+            model_class="RKModelForSequenceClassification",
             checkpoint="rk-transformers/distilbert-base-uncased-finetuned-sst-2-english",
         )
     )
@@ -944,13 +900,222 @@ class RKRTModelForSequenceClassification(RKRTModel):
         *,
         return_dict: bool = True,
         **kwargs: Any,
-    ) -> SequenceClassifierOutput | tuple[torch.Tensor | np.ndarray]:
+    ):
         self._warn_on_unhandled_inputs(kwargs)
-        use_torch, model_inputs, original_batch_size = self._prepare_text_inputs(
-            input_ids, attention_mask, token_type_ids
-        )
+        use_torch, model_inputs, original_shape = self._prepare_text_inputs(input_ids, attention_mask, token_type_ids)
         outputs = self._run_text_model(use_torch, model_inputs, ["logits"])
-        logits = outputs["logits"][:original_batch_size]
+        logits = outputs["logits"][: original_shape[0]]
         if not return_dict:
             return (logits,)
         return SequenceClassifierOutput(logits=logits)  # type: ignore[arg-type]
+
+
+QUESTION_ANSWERING_EXAMPLE = r"""
+    Example of question answering:
+
+    ```python
+    >>> from transformers import {processor_class}
+    >>> from rktransformers.modeling import {model_class}
+    >>> import torch
+
+    >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
+    >>> model = {model_class}.from_pretrained("{checkpoint}")
+
+    >>> question, text = "Who was Jim Henson?", "Jim Henson was a nice puppet"
+    >>> inputs = tokenizer(question, text, return_tensors="np")
+
+    >>> outputs = model(**inputs)
+    >>> start_logits = outputs.start_logits
+    >>> end_logits = outputs.end_logits
+    >>> list(start_logits.shape)
+    [1, 512]
+    >>> list(end_logits.shape)
+    [1, 512]
+    ```
+"""
+
+
+@add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
+class RKModelForQuestionAnswering(
+    RKModel[QuestionAnsweringModelOutput, torch.Tensor | np.ndarray, torch.Tensor | np.ndarray]
+):
+    """RKNN Model with a QuestionAnsweringModelOutput for extractive question-answering tasks like SQuAD."""
+
+    auto_model_class = AutoModelForQuestionAnswering
+
+    @add_start_docstrings_to_model_forward(
+        TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
+        + QUESTION_ANSWERING_EXAMPLE.format(
+            processor_class=_TOKENIZER_FOR_DOC,
+            model_class="RKModelForQuestionAnswering",
+            checkpoint="rk-transformers/distilbert-base-cased-distilled-squad",
+        )
+    )
+    def forward(
+        self,
+        input_ids: torch.Tensor | np.ndarray,
+        attention_mask: torch.Tensor | np.ndarray | None = None,
+        token_type_ids: torch.Tensor | np.ndarray | None = None,
+        *,
+        return_dict: bool = True,
+        **kwargs: Any,
+    ):
+        self._warn_on_unhandled_inputs(kwargs)
+        use_torch, model_inputs, original_shape = self._prepare_text_inputs(input_ids, attention_mask, token_type_ids)
+        outputs = self._run_text_model(use_torch, model_inputs, ["start_logits", "end_logits"])
+        start_logits = outputs["start_logits"][: original_shape[0]]
+        end_logits = outputs["end_logits"][: original_shape[0]]
+        if not return_dict:
+            return (start_logits, end_logits)
+        return QuestionAnsweringModelOutput(start_logits=start_logits, end_logits=end_logits)  # type: ignore[arg-type]
+
+
+TOKEN_CLASSIFICATION_EXAMPLE = r"""
+    Example of token classification:
+
+    ```python
+    >>> from transformers import {processor_class}
+    >>> from rktransformers.modeling import {model_class}
+    >>> import torch
+
+    >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
+    >>> model = {model_class}.from_pretrained("{checkpoint}")
+
+    >>> inputs = tokenizer("My name is Philipp and I live in Germany.", return_tensors="np")
+
+    >>> outputs = model(**inputs)
+    >>> logits = outputs.logits
+    >>> list(logits.shape)
+    [1, 512, 9]
+    ```
+"""
+
+
+@add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
+class RKModelForTokenClassification(RKModel[TokenClassifierOutput, torch.Tensor | np.ndarray]):
+    """RKNN Model with a token classification head on top (a linear layer on top of the hidden-states output)
+    e.g. for Named-Entity-Recognition (NER) tasks."""
+
+    auto_model_class = AutoModelForTokenClassification
+
+    @add_start_docstrings_to_model_forward(
+        TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
+        + TOKEN_CLASSIFICATION_EXAMPLE.format(
+            processor_class=_TOKENIZER_FOR_DOC,
+            model_class="RKModelForTokenClassification",
+            checkpoint="rk-transformers/bert-base-NER",
+        )
+    )
+    def forward(
+        self,
+        input_ids: torch.Tensor | np.ndarray,
+        attention_mask: torch.Tensor | np.ndarray | None = None,
+        token_type_ids: torch.Tensor | np.ndarray | None = None,
+        *,
+        return_dict: bool = True,
+        **kwargs: Any,
+    ):
+        self._warn_on_unhandled_inputs(kwargs)
+        use_torch, model_inputs, original_shape = self._prepare_text_inputs(input_ids, attention_mask, token_type_ids)
+        outputs = self._run_text_model(use_torch, model_inputs, ["logits"])
+        logits = outputs["logits"][: original_shape[0]]
+        if not return_dict:
+            return (logits,)
+        return TokenClassifierOutput(logits=logits)  # type: ignore[arg-type]
+
+
+MULTIPLE_CHOICE_EXAMPLE = r"""
+    Example of multiple choice:
+
+    ```python
+    >>> from transformers import {processor_class}
+    >>> from rktransformers.modeling import {model_class}
+    >>> import torch
+
+    >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
+    >>> model = {model_class}.from_pretrained("{checkpoint}")
+
+    >>> prompt = "In Italy, pizza is served in slices."
+    >>> choice0 = "It is eaten with a fork and knife."
+    >>> choice1 = "It is eaten while held in the hand."
+    >>> choice2 = "It is blended into a smoothie."
+    >>> choice3 = "It is folded into a taco."
+    >>> labels = torch.tensor(0).unsqueeze(0)  # choice0 is correct (according to Wikipedia ;))
+
+    >>> encoding = tokenizer([prompt, prompt, prompt, prompt], [choice0, choice1, choice2, choice3], return_tensors="np", padding=True)
+    >>> inputs = {{k: np.expand_dims(v, 0) for k, v in encoding.items()}}
+
+    >>> outputs = model(**inputs)
+    >>> logits = outputs.logits
+    >>> list(logits.shape)
+    [1, 4]
+    ```
+"""  # noqa: E501
+
+
+@add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
+class RKModelForMultipleChoice(RKModel[MultipleChoiceModelOutput, torch.Tensor | np.ndarray]):
+    """RKNN Model with a multiple choice classification head
+    on top (a linear layer on top of the pooled output and a softmax) e.g. for RocStories/SWAG tasks."""
+
+    auto_model_class = AutoModelForMultipleChoice
+
+    @add_start_docstrings_to_model_forward(
+        TEXT_INPUTS_DOCSTRING.format("batch_size, num_choices, sequence_length")
+        + MULTIPLE_CHOICE_EXAMPLE.format(
+            processor_class=_TOKENIZER_FOR_DOC,
+            model_class="RKModelForMultipleChoice",
+            checkpoint="rk-transformers/bert-base-uncased_SWAG",
+        )
+    )
+    def forward(
+        self,
+        input_ids: torch.Tensor | np.ndarray | None = None,
+        attention_mask: torch.Tensor | np.ndarray | None = None,
+        token_type_ids: torch.Tensor | np.ndarray | None = None,
+        *,
+        return_dict: bool = True,
+        **kwargs: Any,
+    ):
+        self._warn_on_unhandled_inputs(kwargs)
+        if input_ids is None:
+            raise ValueError("`input_ids` is required for RKModel text inference.")
+
+        # Multiple-choice inputs are 3D: [batch_size, num_choices, seq_len]
+        if len(input_ids.shape) != 3:
+            raise ValueError(
+                f"Multiple-choice inputs must be 3D [batch_size, num_choices, seq_len]. Got shape: {input_ids.shape}"
+            )
+
+        batch_size, num_choices, seq_len = input_ids.shape
+
+        # Get num_choices from config if available, otherwise use input shape
+        expected_num_choices = None
+        if self.rknn_config and hasattr(self.rknn_config, "task_kwargs") and self.rknn_config.task_kwargs:
+            expected_num_choices = self.rknn_config.task_kwargs.get("num_choices")
+            if expected_num_choices != num_choices:
+                raise ValueError(
+                    f"Number of choices in config ({expected_num_choices}) does not match input shape ({num_choices})"
+                )
+        else:
+            self.num_choices = num_choices
+            logger.warning_once("RKNN config not found in config.json. Using input_ids shape to infer num_choices.")  # type: ignore
+
+        target_shape = (self.batch_size, num_choices, self.max_seq_length)
+        use_torch, model_inputs, original_shape = self._prepare_text_inputs(
+            input_ids, attention_mask, token_type_ids, input_shape=target_shape
+        )
+        outputs = self._run_text_model(use_torch, model_inputs, ["logits"])
+        logits = outputs["logits"]
+
+        # Reshape logits if needed: RKNN may return [batch_size * num_choices] or [batch_size, num_choices]
+        if logits.ndim == 1:
+            # Flatten case: [batch_size * num_choices] -> [batch_size, num_choices]
+            logits = logits.reshape(original_shape[0], original_shape[1])
+        elif logits.shape != (original_shape[0], original_shape[1]):
+            # Trim padding if needed
+            logits = logits[: original_shape[0], : original_shape[1]]
+
+        if not return_dict:
+            return (logits,)
+        return MultipleChoiceModelOutput(logits=logits)  # type: ignore[arg-type]

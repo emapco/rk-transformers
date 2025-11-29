@@ -20,9 +20,9 @@
 
 ### 🔄 Model Export & Conversion
 
-- **Automatic ONNX Export**: Converts Hugging Face models to ONNX with intelligent input detection
+- **Automatic ONNX Export**: Converts Hugging Face models to ONNX with input detection
 - **RKNN Optimization**: Exports to RKNN format with configurable optimization levels (O0-O3)
-- **Quantization**: Post-training quantization (INT8, FP16) with calibration dataset support
+- **Quantization**: INT8 (w8a8) quantization with calibration dataset support
 - **Push to Hub**: Direct integration with Hugging Face Hub for model versioning
 
 ### ⚡ High-Performance Inference
@@ -33,17 +33,17 @@
 
 ### 🧩 Framework Integration
 
-- **Sentence Transformers**: Drop-in replacement with `backend="rknn"` parameter
+- **Sentence Transformers**: Drop-in replacement with `from rktransformers import RKSentenceTransformer as SentenceTransformer`
 - **Transformers API**: Compatible with standard Hugging Face pipelines
-- **Multiple Tasks**: Feature extraction, masked LM, sequence classification
+- **Multiple Tasks**: Feature extraction, masked LM, sequence classification and more
 
 ## 📦 Installation
 
 ### Prerequisites
 
-- Python 3.10 or later
+- Python 3.10 - 3.12
 - Linux-based OS (Ubuntu 24.04+ recommended)
-- For export: PC with x86_64 architecture
+- For export: PC with x86_64/arm64 architecture
 - For inference: Rockchip device with RKNPU2 support (RK3588, RK3576, etc.)
 
 ### Quick Install
@@ -102,13 +102,15 @@ Development dependencies include:
 ### 1. Export a Model to RKNN
 
 ```bash
+# Display help message with available options
+rk-transformers-cli export -h 
+
 # Export a Sentence Transformer model from Hugging Face Hub (float16)
 rk-transformers-cli export \
   --model sentence-transformers/all-MiniLM-L6-v2 \
   --platform rk3588 \
   --flash-attention \
-  --optimization-level 3 \
-  --opset 19  # Default is 18
+  --optimization-level 3
 
 # Export with custom dataset for quantization (int8)
 rk-transformers-cli export \
@@ -134,6 +136,7 @@ rk-transformers-cli export \
 ### 2. Run Inference with Sentence Transformers
 
 #### SentenceTransformer
+
 ```python
 from rktransformers import RKSentenceTransformer
 
@@ -160,6 +163,7 @@ model = RKSentenceTransformer(
 ```
 
 #### CrossEncoder
+
 ```python
 from rktransformers import RKCrossEncoder
 
@@ -201,11 +205,11 @@ model = RKCrossEncoder(
 ```python
 from transformers import AutoTokenizer
 
-from rktransformers import RKRTModelForFeatureExtraction
+from rktransformers import RKModelForFeatureExtraction
 
 # Load tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained("rk-transformers/all-MiniLM-L6-v2")
-model = RKRTModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
+model = RKModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
 
 # Tokenize and run inference
 inputs = tokenizer(
@@ -220,7 +224,7 @@ embeddings = outputs.last_hidden_state.mean(axis=1)  # Mean pooling
 print(embeddings.shape)  # (1, 384)
 
 # Load specific quantized model file
-model = RKRTModelForFeatureExtraction.from_pretrained(
+model = RKModelForFeatureExtraction.from_pretrained(
     "rk-transformers/all-MiniLM-L6-v2", platform="rk3588", file_name="rknn/model_w8a8.rknn"
 )
 ```
@@ -230,10 +234,10 @@ model = RKRTModelForFeatureExtraction.from_pretrained(
 ```python
 from transformers import pipeline
 
-from rktransformers import RKRTModelForMaskedLM
+from rktransformers import RKModelForMaskedLM
 
 # Load the RKNN model
-model = RKRTModelForMaskedLM.from_pretrained(
+model = RKModelForMaskedLM.from_pretrained(
     "rk-transformers/bert-base-uncased", platform="rk3588", file_name="rknn/model_w8a8.rknn"
 )
 
@@ -310,20 +314,20 @@ Rockchip SoCs with multiple NPU cores (like RK3588 with 3 cores or RK3576 with 2
 #### Python API - Inference
 
 ```python
-from rktransformers import RKRTModelForFeatureExtraction
+from rktransformers import RKModelForFeatureExtraction
 
 # Auto-select idle cores (recommended for production)
-model = RKRTModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
+model = RKModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="auto")
 
 # Use specific core for dedicated workloads
-model = RKRTModelForFeatureExtraction.from_pretrained(
+model = RKModelForFeatureExtraction.from_pretrained(
     "rk-transformers/all-MiniLM-L6-v2",
     platform="rk3588",
     core_mask="1",  # Reserve core 0 for other tasks
 )
 
 # Use all cores for maximum performance
-model = RKRTModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="all")
+model = RKModelForFeatureExtraction.from_pretrained("rk-transformers/all-MiniLM-L6-v2", platform="rk3588", core_mask="all")
 ```
 
 #### Sentence Transformers Integration
@@ -355,7 +359,7 @@ model = RKCrossEncoder(
 Current RKNN support for dynamic inputs is **experimental and not fully functional**. As a result, all models exported via `rk-transformers` use **static input shapes** defined at export time.
 
 - **Performance Impact**: The NPU allocates memory based on the static shape. If you export with `max_seq_length=512` but only infer on 10 tokens, the NPU still processes the full 512-token padding, leading to inefficient inference.
-- **Usage**: You must ensure your input tensors match the exported dimensions (or use padding).
+- **Usage**: You must ensure your input tensors match the exported dimensions. `RKModel` dervied classes automatically handle padding to the expected shape for `["batch_size", "seq_length"]` input shapes for `input_ids`, `attention_mask`, and `token_type_ids` inputs.
 - **Recommendation**: Export multiple versions of your model optimized for different sequence lengths (e.g., 128, 256, 512) and batch sizes (e.g., 1, 2, 4) if your workload varies significantly.
 
 ### Quantization Support
@@ -370,19 +374,26 @@ While the tool supports various quantization data types, many are **experimental
 [RKNN currently supports a subset of operators supported by ONNX.](https://github.com/airockchip/rknn-toolkit2/blob/master/doc/RKNNToolKit2_OP_Support-2.3.2.md) If your model uses operators not supported by RKNN, you may need to explore setting different export parameters:
 
 Easy methods (limited success):
+
 - `opset`: 14-19
 - `op_target`: {'op_id':'cpu', 'op_id3':'cpu'}
 
 Hard methods:
+
 - Modify the ONNX model graph to replace unsupported operators with supported ones.
 - Incorporate the `rknn.register_custom_op()` method inbetween `rknn.config()` and `rknn.load_onnx()` in the `convert.py` module.
+
+### Dtype Limitations
+
+- **Input Types**: RKNN NPUs only support: `int8`, `uint8`, `int16`, `float16`, `float32` for input tensor dtypes. This results in noticeable performance degradation when using `int64` input tensors (e.g., `input_ids`).
+- **Model Weights**: Model weights are stored as `float16` by default. When quantized, weights are stored as `int8`.
 
 ## Architecture
 
 ### Runtime Loading Workflow
 
-1. **Model Discovery**: `RKRTModel.from_pretrained()` searches for `.rknn` files
-2. **Config Matching**: Reads `rknn.json` to match platform and constraints
+1. **Model Discovery**: `RKModel.from_pretrained()` searches for `.rknn` files
+2. **Config Matching**: Reads the rknn config in `config.json` to match platform and constraints
 3. **Platform Validation**: Checks compatibility with `RKNNLite.list_support_target_platform()`
 4. **Runtime Init**: Loads model to NPU with specified core mask
 5. **Inference**: Runs forward pass with automatic input/output handling
@@ -414,7 +425,7 @@ graph TB
         ST[Sentence Transformers]
         RKST[RKSentenceTransformer]
         RKCE[RKCrossEncoder]
-        RKRT[RKRTModel Classes]
+        RKRT[RKModel Classes]
         HFT[Hugging Face Transformers]
         
         ST -->|subclasses| RKST
@@ -432,28 +443,32 @@ graph TB
 
 ### Configuration Files
 
-#### `rknn.json`
+#### `config.json`
 
-Generated during export and stored alongside the model:
+The RKNN configuration is stored within the model's `config.json` file under the `"rknn"` key:
 
 ```json
 {
-  "model.rknn": {
-    "platform": "rk3588",
-    "batch_size": 1,
-    "max_seq_length": 128,
-    "model_input_names": ["input_ids", "attention_mask"],
-    "quantized_dtype": "w8a8",
-    "optimization_level": 3,
-    ...
-  },
-  "rknn/optimized.rknn": {
-    ...
+  "architectures": ["BertModel"],
+  ...
+  "rknn": {
+    "model.rknn": {
+      "platform": "rk3588",
+      "batch_size": 1,
+      "max_seq_length": 128,
+      "model_input_names": ["input_ids", "attention_mask"],
+      "quantized_dtype": "w8a8",
+      "optimization_level": 3,
+      ...
+    },
+    "rknn/optimized.rknn": {
+      ...
+    }
   }
 }
 ```
 
-The keys are relative paths to `.rknn` files, allowing multiple optimized variants per model.
+The keys in the `"rknn"` object are relative paths to `.rknn` files, allowing multiple optimized variants per model.
 
 ## 🤝 Contributing
 

@@ -16,12 +16,13 @@ import contextlib
 import json
 import logging
 import os
+import shutil
 import tempfile
 
 import numpy as np
 import onnx
 from datasets import concatenate_datasets, load_dataset
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoConfig, AutoTokenizer, PretrainedConfig
 
 from rktransformers.configuration import RKNNConfig
 from rktransformers.constants import (
@@ -108,10 +109,11 @@ def prepare_dataset_for_quantization(
     dataset_size,
     tokenizer_path,
     model_input_names,
-    sequence_length=DEFAULT_MAX_SEQ_LENGTH,
     dataset_split=None,
     dataset_subset=None,
     dataset_columns=None,
+    batch_size=DEFAULT_BATCH_SIZE,
+    sequence_length=DEFAULT_MAX_SEQ_LENGTH,
 ):
     """
     Prepare HuggingFace dataset for RKNN quantization.
@@ -121,10 +123,11 @@ def prepare_dataset_for_quantization(
         dataset_size: Number of samples to use
         tokenizer_path: Path to tokenizer
         model_input_names: List of model input names to save (e.g., ["input_ids", "attention_mask"])
-        sequence_length: Maximum sequence length
         dataset_split: Optional list of splits to use (e.g., ["train", "validation"])
         dataset_subset: Optional subset name for the dataset
         dataset_columns: Optional list of columns to use for text data
+        batch_size: Batch size for the calibration data (default: DEFAULT_BATCH_SIZE)
+        sequence_length: Maximum sequence length (default: DEFAULT_MAX_SEQ_LENGTH)
 
     Returns:
         Path to the dataset file for RKNN quantization
@@ -219,35 +222,50 @@ def prepare_dataset_for_quantization(
     logger.info(f"Saving tokenized data to numpy files for inputs: {model_input_names}")
 
     with open(dataset_file_path, "w") as temp_file:
-        for idx in range(len(tokenized_dataset)):
-            sample = tokenized_dataset[idx]
+        batch_idx = 0
+        idx = 0
+        while idx < len(tokenized_dataset):
+            # Collect batch_size unique samples
+            batch_samples = []
+            for _ in range(batch_size):
+                if idx >= len(tokenized_dataset):
+                    break
+                batch_samples.append(tokenized_dataset[idx])
+                idx += 1
 
-            # Only save inputs specified in model_input_names
+            # Skip if we don't have enough samples for a complete batch
+            if len(batch_samples) < batch_size:
+                logger.warning(f"Skipping incomplete batch with {len(batch_samples)} samples (need {batch_size})")
+                break
+
+            # Process each input type
             input_paths = []
             for input_name in model_input_names:
-                if input_name not in sample:
-                    logger.warning(f"Input '{input_name}' not found in tokenized sample {idx}, skipping")
-                    continue
+                # Check if all samples have this input
+                if not all(input_name in sample for sample in batch_samples):
+                    logger.warning(f"Input '{input_name}' not found in all batch samples, skipping batch")
+                    break
 
-                # Convert to numpy array and save
-                input_data = np.array([sample[input_name]], dtype=np.int64)
-                input_path = os.path.join(temp_dir, f"sample_{idx}_{input_name}.npy")
+                # Stack samples to create batched array: shape (batch_size, seq_len)
+                input_data = np.array([sample[input_name] for sample in batch_samples], dtype=np.int64)
+                input_path = os.path.join(temp_dir, f"batch_{batch_idx}_{input_name}.npy")
                 np.save(input_path, input_data)
                 input_paths.append(input_path)
 
-            # Skip this sample if we couldn't save any inputs
-            if not input_paths:
-                logger.warning(f"No valid inputs found for sample {idx}, skipping")
+            # Skip this batch if we couldn't save all inputs
+            if len(input_paths) != len(model_input_names):
+                logger.warning(f"Not all inputs found for batch {batch_idx}, skipping")
                 continue
 
             # Write all input paths on one line, space-separated
             line = " ".join(input_paths)
             temp_file.write(f"{line}\n")
+            batch_idx += 1
 
     return dataset_file_path, target_columns, splits_to_try
 
 
-def load_model_config(model_name_or_path: str) -> dict:
+def load_model_config(model_name_or_path: str) -> PretrainedConfig | None:
     """
     Load model configuration from config.json or Hugging Face Hub.
 
@@ -255,26 +273,28 @@ def load_model_config(model_name_or_path: str) -> dict:
         model_name_or_path: Path to the ONNX model file or Hub ID
 
     Returns:
-        Dictionary containing model configuration or empty dict if not found.
+        PretrainedConfig object or None if not found.
     """
     try:
         # Use AutoConfig to load configuration (handles both local and Hub)
         config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
-        return config.to_dict()
+        return config
     except Exception as e:
-        logger.warning(f"Failed to load config for {model_name_or_path}: {e}")
+        logger.warning(f"Failed to load config for {model_name_or_path}. Attemping to load local config.json: {e}")
 
         # Fallback for local directory if AutoConfig fails
         if os.path.isdir(model_name_or_path):
             config_path = os.path.join(model_name_or_path, "config.json")
             if os.path.exists(config_path):
                 try:
+                    # Try to load as generic PretrainedConfig from dict
                     with open(config_path) as f:
-                        return json.load(f)
+                        config_dict = json.load(f)
+                    return PretrainedConfig.from_dict(config_dict)
                 except Exception as inner_e:
                     logger.warning(f"Failed to load local config.json: {inner_e}")
 
-        return {}
+        return None
 
 
 def generate_rknn_output_path(
@@ -299,7 +319,7 @@ def generate_rknn_output_path(
     Returns:
         A tuple containing:
             - output_path: Full path to the output RKNN file.
-            - rknn_key: Key to use in rknn.json (relative path).
+            - rknn_key: Key for the rknn config in config.json (relative path).
     """
     # Determine if batch_size and max_seq_length are non-default
     # Only include them in filename if they differ from defaults
@@ -337,7 +357,7 @@ def generate_rknn_output_path(
         os.makedirs(output_dir, exist_ok=True)
         filename = f"{model_name}{suffix}.rknn"
         output_path = os.path.join(output_dir, filename)
-        # Relative path for rknn.json key
+        # Relative path for the rknn config in config.json
         rknn_key = f"{sub_dir}/{filename}"
     else:
         output_dir = model_dir
@@ -351,37 +371,53 @@ def generate_rknn_output_path(
     return output_path, rknn_key
 
 
-def store_rknn_json(
-    config: RKNNConfig,
+def update_model_config_with_rknn(
+    rknn_config: RKNNConfig,
     model_dir: str,
     rknn_key: str,
+    pretrained_config: PretrainedConfig | None = None,
 ) -> None:
     """
-    Generate or update the rknn.json file with the provided configuration.
+    Update the model's config.json with the RKNN configuration.
+
+    This follows Hugging Face patterns by accepting an already-loaded PretrainedConfig
+    object and updating it in-place before saving, rather than re-loading from disk.
 
     Args:
-        config: RKNN configuration object.
-        model_dir: Directory where the model should be saved.
-        rknn_key: Key to use in rknn.json (relative path to RKNN model weights).
+        rknn_config: RKNN configuration object.
+        model_dir: Directory where the model is saved.
+        rknn_key: Key to use for the RKNN config (relative path to RKNN model weights).
+        pretrained_config: Optional pre-loaded PretrainedConfig object. If None, will load from disk.
     """
-    rknn_json_path = os.path.join(model_dir, "rknn.json")
-    rknn_config = {rknn_key: config.to_export_dict()}
-
-    if os.path.exists(rknn_json_path):
-        try:
-            with open(rknn_json_path) as f:
-                existing_config = json.load(f)
-            existing_config.update(rknn_config)
-            rknn_config = existing_config
-        except Exception as e:
-            logger.warning(f"Failed to read existing rknn.json: {e}")
+    config_path = os.path.join(model_dir, "config.json")
+    rknn_export_dict = rknn_config.to_export_dict()
 
     try:
-        with open(rknn_json_path, "w") as f:
-            json.dump(rknn_config, f, indent=4)
-        logger.info(f"Exported configuration to {rknn_json_path}")
+        if pretrained_config is not None:
+            config = pretrained_config
+        elif os.path.exists(config_path):
+            try:
+                config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+            except Exception:
+                with open(config_path) as f:
+                    config_dict = json.load(f)
+                config = PretrainedConfig.from_dict(config_dict)
+        else:
+            config = PretrainedConfig()
+
+        model_config_dict = config.to_dict()
+        if "rknn" not in model_config_dict:
+            model_config_dict["rknn"] = {}
+        if not isinstance(model_config_dict["rknn"], dict):
+            model_config_dict["rknn"] = {}
+        model_config_dict["rknn"][rknn_key] = rknn_export_dict
+
+        config.update(model_config_dict)
+        config.save_pretrained(model_dir)
+        logger.info(f"Updated configuration in {config_path}")
+
     except Exception as e:
-        logger.warning(f"Failed to write rknn.json: {e}")
+        logger.warning(f"Failed to update config.json: {e}")
 
 
 def get_onnx_input_names(model_path: str) -> list[str] | None:
@@ -405,17 +441,36 @@ def get_onnx_input_names(model_path: str) -> list[str] | None:
         return None
 
 
-def get_rk_model_class(task: str) -> str:
+def get_rk_model_class(task: str, pretrained_config: PretrainedConfig | None = None) -> str | None:
     """
-    Get the RKRTModel class name for a given task.
+    Get the RKModel class name for a given task.
 
     Args:
         task: The task name (e.g., "fill-mask", "sequence-classification")
+        pretrained_config: The pretrained config object
 
     Returns:
-        The RKRTModel class name (e.g., "RKRTModelForMaskedLM")
+        The RKModel class name (e.g., "RKModelForMaskedLM") or None if unknown.
     """
-    return TASK_TO_RK_MODEL_CLASS.get(task, "RKRTModelForFeatureExtraction")
+    model_class_name = TASK_TO_RK_MODEL_CLASS.get(task)
+    if model_class_name:
+        return model_class_name
+
+    if pretrained_config and hasattr(pretrained_config, "architectures") and pretrained_config.architectures:
+        for arch in pretrained_config.architectures:
+            for rk_class in TASK_TO_RK_MODEL_CLASS.values():
+                # Check if architecture ends with the suffix of the RK class
+                # e.g. BertForTokenClassification ends with ForTokenClassification (from RKModelForTokenClassification)
+                suffix = rk_class.replace("RKModel", "")
+                if arch.endswith(suffix):
+                    return rk_class
+
+        if task == "auto":
+            for arch in pretrained_config.architectures:
+                if arch.endswith("Model"):
+                    return "RKModelForFeatureExtraction"
+
+    return None
 
 
 def resolve_hub_repo_id(hub_model_id: str | None, hub_token: str | None = None) -> str | None:
@@ -478,16 +533,61 @@ def resolve_hub_repo_id(hub_model_id: str | None, hub_token: str | None = None) 
         ) from e
 
 
-def clean_intermediate_onnx_files() -> None:
+def has_rknn_config(config_path: str) -> bool:
     """
-    Clean up intermediate ONNX files created by RKNN toolkit during export.
-    These files usually match the pattern check*.onnx in the current working directory.
+    Check if a config.json file contains RKNN modifications.
+
+    Args:
+        config_path: Path to the config.json file or directory containing it.
+
+    Returns:
+        True if the config contains an "rknn" key, False otherwise.
+    """
+    try:
+        # If a directory is provided, append config.json
+        if os.path.isdir(config_path):
+            config_path = os.path.join(config_path, "config.json")
+
+        # Check if file exists
+        if not os.path.exists(config_path):
+            return False
+
+        # Load and check for "rknn" key
+        with open(config_path) as f:
+            config_dict = json.load(f)
+
+        return "rknn" in config_dict
+
+    except Exception as e:
+        logger.debug(f"Failed to check for RKNN config in {config_path}: {e}")
+        return False
+
+
+def clean_build_artifacts(output_dir: str) -> None:
+    """
+    Remove intermediate ONNX files created by RKNN toolkit during export.
+    Also remove cache directories created by huggingface_hub.
+
+    Args:
+        output_dir: Path to the model output directory.
     """
     cwd = os.getcwd()
     for filename in os.listdir(cwd):
         if filename.startswith("check") and filename.endswith(".onnx"):
             with contextlib.suppress(Exception):
                 os.remove(os.path.join(cwd, filename))
+
+    cache_directories = [".cache", ".locks"]
+    for cache_dir in cache_directories:
+        cache_dir = os.path.join(output_dir, cache_dir)
+        if os.path.exists(cache_dir):
+            with contextlib.suppress(Exception):
+                shutil.rmtree(cache_dir)
+    for root, dirs, _ in os.walk(output_dir):
+        for dir in dirs:
+            if dir.startswith("models--"):
+                with contextlib.suppress(Exception):
+                    shutil.rmtree(os.path.join(root, dir))
 
 
 def get_file_size_str(path: str) -> str:

@@ -16,6 +16,53 @@
   "num_hidden_layers": 2,
   "pad_token_id": 0,
   "position_embedding_type": "absolute",
+  "rknn": {
+    "rknn/model_b1_s32_o3.rknn": {
+      "batch_size": 1,
+      "custom_string": null,
+      "dynamic_input": null,
+      "float_dtype": "float16",
+      "inputs_yuv_fmt": null,
+      "max_seq_length": 32,
+      "mean_values": null,
+      "model_input_names": [
+        "input_ids",
+        "attention_mask",
+        "token_type_ids"
+      ],
+      "opset": 19,
+      "optimization": {
+        "compress_weight": false,
+        "enable_flash_attention": false,
+        "model_pruning": false,
+        "optimization_level": 3,
+        "remove_reshape": false,
+        "remove_weight": false,
+        "sparse_infer": false
+      },
+      "quantization": {
+        "auto_hybrid_cos_thresh": 0.98,
+        "auto_hybrid_euc_thresh": null,
+        "dataset_columns": null,
+        "dataset_name": null,
+        "dataset_size": 128,
+        "dataset_split": null,
+        "dataset_subset": null,
+        "do_quantization": false,
+        "quant_img_RGB2BGR": false,
+        "quantized_algorithm": "normal",
+        "quantized_dtype": "w8a8",
+        "quantized_hybrid_level": 0,
+        "quantized_method": "channel"
+      },
+      "rktransformers_version": "0.3.0",
+      "single_core_mode": false,
+      "std_values": null,
+      "target_platform": "rk3588",
+      "task": "auto",
+      "task_kwargs": null
+    }
+  },
   "torch_dtype": "float32",
   "transformers_version": "4.55.4",
   "type_vocab_size": 2,

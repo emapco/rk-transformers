@@ -19,7 +19,7 @@ tags:
 - **Original Model:** [/home/manny/rk-transformers/tests/data/random_bert](/home/manny/rk-transformers/tests/data/random_bert)
 - **Target Platform:** rk3588
 - **rknn-toolkit2 Version:** 2.3.2
-- **rk-transformers Version:** 0.1.0
+- **rk-transformers Version:** 0.3.0
 
 ### Available Model Files
 
@@ -31,39 +31,33 @@ tags:
 
 ### Installation
 
-Install `rk-transformers` to use this model:
+Install `rk-transformers` with inference dependencies to use this model:
 
 ```bash
-pip install rk-transformers
+pip install rk-transformers[inference]
 ```
 
-#### RKTransformers API
+#### RK-Transformers API
 
 ```python
-from rktransformers import RKRTModelForFeatureExtraction
+from rktransformers import RKModelForFeatureExtraction
 from transformers import AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("random_bert")
-model = RKRTModelForFeatureExtraction.from_pretrained(
+model = RKModelForFeatureExtraction.from_pretrained(
     "random_bert",
     platform="rk3588",
     core_mask="auto",
     file_name="rknn/model_b1_s32_o3.rknn"
 )
 
-inputs = tokenizer(
-    ["Sample text for encoding"],
-    padding="max_length",
-    max_length=32,
-    truncation=True,
-    return_tensors="np"
-)
-
+inputs = tokenizer("My name is Philipp and I live in Germany.", return_tensors="np")
 outputs = model(**inputs)
-print(outputs.shape)
+last_hidden_state = outputs.last_hidden_state
+print(last_hidden_state.shape)
 
 # Load specific optimized/quantized model file
-model = RKRTModelForFeatureExtraction.from_pretrained(
+model = RKModelForFeatureExtraction.from_pretrained(
     "random_bert",
     platform="rk3588",
     file_name="rknn/model_b1_s32_o3.rknn"
@@ -72,4 +66,4 @@ model = RKRTModelForFeatureExtraction.from_pretrained(
 
 ## Configuration
 
-The full configuration for all exported RKNN models is available in the [rknn.json](./rknn.json) file.
+The full configuration for all exported RKNN models is available in the [config.json](./config.json) file.

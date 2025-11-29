@@ -44,9 +44,9 @@ class TestRKSentenceTransformer:
         )
 
         assert model.backend == "rknn"
-        # Check if the underlying auto_model is an RKRTModel
-        assert "RKRTModel" in model[0].auto_model.__class__.__name__
-        # Check if max_seq_length was updated from rknn.json
+        # Check if the underlying auto_model is an RKModel
+        assert "RKModel" in model[0].auto_model.__class__.__name__
+        # Check if max_seq_length was updated from config.json
         assert model.max_seq_length == 32
 
     def test_inference(self, random_bert_model_path: Path) -> None:
@@ -150,7 +150,7 @@ INTEGRATION_TRANSFORMER_MODEL = "rk-transformers/bert-base-uncased"
 
 
 # RKNN backend gets overloaded when running all tests at once
-@pytest.mark.flaky(reruns=2, reruns_delay=random.uniform(12, 20), only_rerun=["RuntimeError"])
+@pytest.mark.flaky(reruns=1, reruns_delay=random.uniform(15, 30), only_rerun=["RuntimeError"])
 @pytest.mark.slow
 @pytest.mark.manual
 @pytest.mark.integration

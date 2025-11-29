@@ -569,7 +569,7 @@ def clean_build_artifacts(output_dir: str) -> None:
     Also remove cache directories created by huggingface_hub.
 
     Args:
-        output_dir: Path to the output directory.
+        output_dir: Path to the model output directory.
     """
     cwd = os.getcwd()
     for filename in os.listdir(cwd):
@@ -579,11 +579,11 @@ def clean_build_artifacts(output_dir: str) -> None:
 
     cache_directories = [".cache", ".locks"]
     for cache_dir in cache_directories:
-        cache_dir = os.path.join(cwd, cache_dir)
+        cache_dir = os.path.join(output_dir, cache_dir)
         if os.path.exists(cache_dir):
             with contextlib.suppress(Exception):
                 shutil.rmtree(cache_dir)
-    for root, dirs, _ in os.walk(cwd):
+    for root, dirs, _ in os.walk(output_dir):
         for dir in dirs:
             if dir.startswith("models--"):
                 with contextlib.suppress(Exception):

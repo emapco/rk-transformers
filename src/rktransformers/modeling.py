@@ -181,7 +181,7 @@ class RKModel(
         self.pad_attention_mask = 0  # Huggingface transformers uses 0 for padding attention mask
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
-            if hasattr(self.tokenizer, "pad_token_id") and self.tokenizer.pad_token_id is None:
+            if hasattr(self.tokenizer, "pad_token_id") and self.tokenizer.pad_token_id is not None:
                 self.pad_token_id = self.tokenizer.pad_token_id
             if hasattr(self.tokenizer, "pad_token_type_id") and self.tokenizer.pad_token_type_id is not None:
                 self.pad_token_type_id = self.tokenizer.pad_token_type_id

@@ -4,17 +4,10 @@ on:
   push:
     branches:
       - main
-      - feat-docs
     paths:
       - "docs/**"
       - "src/**"
       - ".github/workflows/docs.yml"
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "docs/**"
-      - "src/**"
   workflow_dispatch:
 
 permissions:

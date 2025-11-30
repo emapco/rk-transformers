@@ -559,9 +559,10 @@ class RKSentenceTransformer(SentenceTransformer):
 
         # Check for RKNN config in modules
         rknn_config: dict | None = None
-        transformer_instance = self.transformers_model
-        if hasattr(transformer_instance, "_rknn_config"):
-            rknn_config = transformer_instance._rknn_config  # type: ignore
+        for module in self:
+            if hasattr(module, "_rknn_config"):
+                rknn_config = module._rknn_config  # type: ignore
+                break
 
         if rknn_config is None or "batch_size" not in rknn_config:
             kwargs["batch_size"] = batch_size
@@ -574,9 +575,12 @@ class RKSentenceTransformer(SentenceTransformer):
             )
 
         # sentence-transformers models work as usual with adjusted batch size
-        if (
-            hasattr(transformer_instance, "_is_sentence_transformer") and transformer_instance._is_sentence_transformer  # type: ignore
-        ):
+        is_sentence_transformer = False
+        for module in self:
+            if hasattr(module, "_is_sentence_transformer"):
+                is_sentence_transformer = module._is_sentence_transformer
+                break
+        if is_sentence_transformer:
             kwargs["batch_size"] = rknn_batch_size
             return super().encode(sentences, **kwargs)
 

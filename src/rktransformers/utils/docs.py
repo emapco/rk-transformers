@@ -61,7 +61,7 @@ def add_start_docstrings_to_model_forward(*docstr) -> Callable[..., Any]:
 TOKENIZER_FOR_DOC = "AutoTokenizer"
 RKNN_MODEL_END_DOCSTRING = r"""
 This model inherits from :class:`~rktransformers.modeling.RKModel`, check its documentation for the generic methods the
-library implements for all its model (such as downloading or saving).
+library implements for all its models (such as downloading or saving).
 """  # noqa: E501
 
 FROM_PRETRAINED_START_DOCSTRING = r"""

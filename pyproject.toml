@@ -1,6 +1,6 @@
 [project]
 name = "rk-transformers"
-version = "0.3.0"
+version = "0.3.1"
 description = "Accelerate Hugging Face Transformers on Rockchip NPUs."
 license = { text = "Apache 2.0" }
 readme = "README.md"

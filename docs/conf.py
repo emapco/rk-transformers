@@ -20,7 +20,7 @@ release = get_rktransformers_version()
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 # Add source directory to path for autodoc
-sys.path.insert(0, os.path.abspath("../../src"))
+sys.path.insert(0, os.path.abspath("../src"))
 
 extensions = [
     "sphinx.ext.autodoc",  # Auto-generate documentation from docstrings

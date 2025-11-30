@@ -60,6 +60,6 @@ If you prefer to use ``pip`` instead of ``uv``:
    pip install rk-transformers[inference]
 
    # For export
-   pip install torch==2.2.0+cpu --index-url https://download.pytorch.org/whl/cpu # Minimum for ARM64 rknn-toolkit2
+   pip install torch==2.2.0+cpu --index-url https://download.pytorch.org/whl/cpu # Minimum torch version for ARM64 with rknn-toolkit2
    pip install rk-transformers[dev,export]
-   pip install torch==2.6.0+cpu --index-url https://download.pytorch.org/whl/cpu # RCE vulnerability torch<=2.5.1
+   pip install torch==2.6.0+cpu --index-url https://download.pytorch.org/whl/cpu # Workaround for RCE vulnerability in torch<=2.5.1

@@ -65,7 +65,7 @@ Quantization Arguments
 Dataset Arguments
 ^^^^^^^^^^^^^^^^^
 
-- ``-d, --dataset``: HuggingFace dataset name for quantization (e.g. 'sentence-transformers/natural-questions').
+- ``-d, --dataset``: Hugging Face dataset name for quantization (e.g. 'sentence-transformers/natural-questions').
 - ``-dsb, --dataset-subset``: Subset name for the dataset.
 - ``-dsz, --dataset-size``: Number of samples to use for quantization (default: 128).
 - ``-dsp, --dataset-split``: Comma-separated list of dataset splits to use. Auto-detected if not specified.

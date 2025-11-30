@@ -39,3 +39,7 @@ precision_evaluation*
 !tests/data/random_bert/model.onnx
 !tests/data/random_bert/rknn/model_b1_s32_o3.rknn
 !tests/data/random_roberta/model.onnx
+
+# Documentation
+docs/build/
+docs/source/_build/

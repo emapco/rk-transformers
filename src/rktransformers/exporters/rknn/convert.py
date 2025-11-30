@@ -50,12 +50,13 @@ def export_rknn(config: RKNNConfig) -> None:
     Export ONNX model or Hugging Face model to RKNN using the provided configuration.
 
     For Hugging Face models, this function:
-    1. Exports to ONNX using Optimum (automatically detects required inputs like token_type_ids)
-    2. Inspects the exported ONNX model to determine actual inputs
-    3. Configures RKNN toolkit with optimization and quantization settings
-    4. Loads and converts the ONNX model to RKNN format
-    5. Optionally quantizes using calibration dataset
-    6. Exports to RKNN format and saves complete configuration
+
+        1. Exports to ONNX using Optimum (automatically detects required inputs like token_type_ids)
+        2. Inspects the exported ONNX model to determine actual inputs
+        3. Configures RKNN toolkit with optimization and quantization settings
+        4. Loads and converts the ONNX model to RKNN format
+        5. Optionally quantizes using calibration dataset
+        6. Exports to RKNN format and saves complete configuration
 
     Args:
         config: RKNN configuration object

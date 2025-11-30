@@ -44,11 +44,7 @@ from transformers.modeling_outputs import (
     TokenClassifierOutput,
 )
 from transformers.utils import logging
-from transformers.utils.doc import (
-    add_end_docstrings,
-    add_start_docstrings,
-    add_start_docstrings_to_model_forward,
-)
+from transformers.utils.doc import add_end_docstrings, add_start_docstrings
 from transformers.utils.hub import cached_file, is_offline_mode
 from typing_extensions import Unpack
 
@@ -60,71 +56,19 @@ from .constants import (
     PlatformType,
 )
 from .modeling_utils import MODEL_OUTPUT_T, PreTrainedModel, RKNNRuntime, TENSOR_Ts
+from .utils.docs import (
+    FROM_PRETRAINED_START_DOCSTRING,
+    RKNN_MODEL_END_DOCSTRING,
+    TEXT_INPUTS_DOCSTRING,
+    TOKENIZER_FOR_DOC,
+    add_start_docstrings_to_model_forward,
+)
 from .utils.import_utils import (
     is_rknn_toolkit_lite_available,
 )
 from .utils.logging_utils import suppress_output
 
 logger = logging.get_logger(__name__)
-
-
-_TOKENIZER_FOR_DOC = "AutoTokenizer"
-RKNN_MODEL_END_DOCSTRING = r"""
-    This model inherits from [`~rktransformers.modeling.RKModel`], check its documentation for the generic methods the
-    library implements for all its model (such as downloading or saving).
-"""
-
-FROM_PRETRAINED_START_DOCSTRING = r"""
-    Instantiate a pretrained model from a pre-trained model configuration.
-
-    Args:
-        model_id (`Union[str, Path]`):
-            Can be either:
-                - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
-                    Valid model ids can be located at the root-level, like `bert-base-uncased`, or namespaced under a
-                    user or organization name, like `dbmdz/bert-base-german-cased`.
-                - A path to a *directory* containing a model saved using [`~OptimizedModel.save_pretrained`],
-                    e.g., `./my_model_directory/`.
-        export (`bool`, defaults to `False`):
-            Defines whether the provided `model_id` needs to be exported to the targeted format.
-        force_download (`bool`, defaults to `True`):
-            Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-            cached versions if they exist.
-        token (`Optional[Union[bool,str]]`, defaults to `None`):
-            The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
-            when running `huggingface-cli login` (stored in `huggingface_hub.constants.HF_TOKEN_PATH`).
-        cache_dir (`Optional[str]`, defaults to `None`):
-            Path to a directory in which a downloaded pretrained model configuration should be cached if the
-            standard cache should not be used.
-        subfolder (`str`, defaults to `""`):
-            In case the relevant files are located inside a subfolder of the model repo either locally or on huggingface.co, you can
-            specify the folder name here.
-        config (`Optional[transformers.PretrainedConfig]`, defaults to `None`):
-            The model configuration.
-        local_files_only (`Optional[bool]`, defaults to `False`):
-            Whether or not to only look at local files (i.e., do not try to download the model).
-        trust_remote_code (`bool`, defaults to `False`):
-            Whether or not to allow for custom code defined on the Hub in their own modeling. This option should only be set
-            to `True` for repositories you trust and in which you have read the code, as it will execute code present on
-            the Hub on your local machine.
-        revision (`Optional[str]`, defaults to `None`):
-            The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
-            git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
-            identifier allowed by git.
-"""  # noqa: E501
-
-TEXT_INPUTS_DOCSTRING = r"""
-    Args:
-        input_ids (`Union[torch.Tensor, np.ndarray, None]` of shape `({0})`, defaults to `None`):
-            Indices of input sequence tokens in the vocabulary.
-            [What are input IDs?](https://huggingface.co/docs/transformers/glossary#input-ids)
-        attention_mask (`Union[torch.Tensor, np.ndarray, None]` of shape `({0})`, defaults to `None`):
-            Mask to avoid performing attention on padding token indices. Mask values selected in `[0, 1]`:
-            - 1 for tokens that are **not masked**,
-            - 0 for tokens that are **masked**.
-        token_type_ids (`Union[torch.Tensor, np.ndarray, None]` of shape `({0})`, defaults to `None`):
-            Segment token indices to indicate first and second portions of the inputs.
-"""
 
 
 class RKModel(
@@ -752,23 +696,23 @@ class RKModel(
 
 
 FEATURE_EXTRACTION_EXAMPLE = r"""
-    Example of feature extraction:
+Example of feature extraction:
 
-    ```python
-    >>> from transformers import {processor_class}
-    >>> from rktransformers.modeling import {model_class}
-    >>> import torch
+.. code-block:: python
 
-    >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
-    >>> model = {model_class}.from_pretrained("{checkpoint}")
+    from transformers import {processor_class}
+    from rktransformers.modeling import {model_class}
+    import torch
 
-    >>> inputs = tokenizer("My name is Philipp and I live in Germany.", return_tensors="np")
+    tokenizer = {processor_class}.from_pretrained("{checkpoint}")
+    model = {model_class}.from_pretrained("{checkpoint}")
 
-    >>> outputs = model(**inputs)
-    >>> last_hidden_state = outputs.last_hidden_state
-    >>> list(last_hidden_state.shape)
-    [1, 12, 384]
-    ```
+    inputs = tokenizer("My name is Philipp and I live in Germany.", return_tensors="np")
+
+    outputs = model(**inputs)
+    last_hidden_state = outputs.last_hidden_state
+    list(last_hidden_state.shape)
+    # [1, 12, 384]
 """
 
 
@@ -781,7 +725,7 @@ class RKModelForFeatureExtraction(RKModel[BaseModelOutput, torch.Tensor | np.nda
     @add_start_docstrings_to_model_forward(
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + FEATURE_EXTRACTION_EXAMPLE.format(
-            processor_class=_TOKENIZER_FOR_DOC,
+            processor_class=TOKENIZER_FOR_DOC,
             model_class="RKModelForFeatureExtraction",
             checkpoint="rk-transformers/all-MiniLM-L6-v2",
         )
@@ -805,23 +749,23 @@ class RKModelForFeatureExtraction(RKModel[BaseModelOutput, torch.Tensor | np.nda
 
 
 MASKED_LM_EXAMPLE = r"""
-    Example of masked language modeling:
+Example of masked language modeling:
 
-    ```python
-    >>> from transformers import {processor_class}
-    >>> from rktransformers.modeling import {model_class}
-    >>> import torch
+.. code-block:: python
 
-    >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
-    >>> model = {model_class}.from_pretrained("{checkpoint}")
+    from transformers import {processor_class}
+    from rktransformers.modeling import {model_class}
+    import torch
 
-    >>> inputs = tokenizer("The capital of France is [MASK].", return_tensors="np")
+    tokenizer = {processor_class}.from_pretrained("{checkpoint}")
+    model = {model_class}.from_pretrained("{checkpoint}")
 
-    >>> outputs = model(**inputs)
-    >>> logits = outputs.logits
-    >>> list(logits.shape)
-    [1, 512, 30522]
-    ```
+    inputs = tokenizer("The capital of France is [MASK].", return_tensors="np")
+
+    outputs = model(**inputs)
+    logits = outputs.logits
+    list(logits.shape)
+    # [1, 512, 30522]
 """
 
 
@@ -834,7 +778,7 @@ class RKModelForMaskedLM(RKModel[MaskedLMOutput, torch.Tensor | np.ndarray]):
     @add_start_docstrings_to_model_forward(
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + MASKED_LM_EXAMPLE.format(
-            processor_class=_TOKENIZER_FOR_DOC,
+            processor_class=TOKENIZER_FOR_DOC,
             model_class="RKModelForMaskedLM",
             checkpoint="rk-transformers/bert-base-uncased",
         )
@@ -858,23 +802,23 @@ class RKModelForMaskedLM(RKModel[MaskedLMOutput, torch.Tensor | np.ndarray]):
 
 
 SEQUENCE_CLASSIFICATION_EXAMPLE = r"""
-    Example of single-label classification:
+Example of single-label classification:
 
-    ```python
-    >>> from transformers import {processor_class}
-    >>> from rktransformers.modeling import {model_class}
-    >>> import torch
+.. code-block:: python
 
-    >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
-    >>> model = {model_class}.from_pretrained("{checkpoint}")
+    from transformers import {processor_class}
+    from rktransformers.modeling import {model_class}
+    import torch
 
-    >>> inputs = tokenizer("Hello, my dog is cute", return_tensors="np")
+    tokenizer = {processor_class}.from_pretrained("{checkpoint}")
+    model = {model_class}.from_pretrained("{checkpoint}")
 
-    >>> outputs = model(**inputs)
-    >>> logits = outputs.logits
-    >>> list(logits.shape)
-    [1, 2]
-    ```
+    inputs = tokenizer("Hello, my dog is cute", return_tensors="np")
+
+    outputs = model(**inputs)
+    logits = outputs.logits
+    list(logits.shape)
+    # [1, 2]
 """
 
 
@@ -887,7 +831,7 @@ class RKModelForSequenceClassification(RKModel[SequenceClassifierOutput, torch.T
     @add_start_docstrings_to_model_forward(
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + SEQUENCE_CLASSIFICATION_EXAMPLE.format(
-            processor_class=_TOKENIZER_FOR_DOC,
+            processor_class=TOKENIZER_FOR_DOC,
             model_class="RKModelForSequenceClassification",
             checkpoint="rk-transformers/distilbert-base-uncased-finetuned-sst-2-english",
         )
@@ -911,27 +855,27 @@ class RKModelForSequenceClassification(RKModel[SequenceClassifierOutput, torch.T
 
 
 QUESTION_ANSWERING_EXAMPLE = r"""
-    Example of question answering:
+Example of question answering:
 
-    ```python
-    >>> from transformers import {processor_class}
-    >>> from rktransformers.modeling import {model_class}
-    >>> import torch
+.. code-block:: python
 
-    >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
-    >>> model = {model_class}.from_pretrained("{checkpoint}")
+    from transformers import {processor_class}
+    from rktransformers.modeling import {model_class}
+    import torch
 
-    >>> question, text = "Who was Jim Henson?", "Jim Henson was a nice puppet"
-    >>> inputs = tokenizer(question, text, return_tensors="np")
+    tokenizer = {processor_class}.from_pretrained("{checkpoint}")
+    model = {model_class}.from_pretrained("{checkpoint}")
 
-    >>> outputs = model(**inputs)
-    >>> start_logits = outputs.start_logits
-    >>> end_logits = outputs.end_logits
-    >>> list(start_logits.shape)
-    [1, 512]
-    >>> list(end_logits.shape)
-    [1, 512]
-    ```
+    question, text = "Who was Jim Henson?", "Jim Henson was a nice puppet"
+    inputs = tokenizer(question, text, return_tensors="np")
+
+    outputs = model(**inputs)
+    start_logits = outputs.start_logits
+    end_logits = outputs.end_logits
+    list(start_logits.shape)
+    # [1, 512]
+    list(end_logits.shape)
+    # [1, 512]
 """
 
 
@@ -946,7 +890,7 @@ class RKModelForQuestionAnswering(
     @add_start_docstrings_to_model_forward(
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + QUESTION_ANSWERING_EXAMPLE.format(
-            processor_class=_TOKENIZER_FOR_DOC,
+            processor_class=TOKENIZER_FOR_DOC,
             model_class="RKModelForQuestionAnswering",
             checkpoint="rk-transformers/distilbert-base-cased-distilled-squad",
         )
@@ -971,37 +915,36 @@ class RKModelForQuestionAnswering(
 
 
 TOKEN_CLASSIFICATION_EXAMPLE = r"""
-    Example of token classification:
+Example of token classification:
 
-    ```python
-    >>> from transformers import {processor_class}
-    >>> from rktransformers.modeling import {model_class}
-    >>> import torch
+.. code-block:: python
 
-    >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
-    >>> model = {model_class}.from_pretrained("{checkpoint}")
+    from transformers import {processor_class}
+    from rktransformers.modeling import {model_class}
+    import torch
 
-    >>> inputs = tokenizer("My name is Philipp and I live in Germany.", return_tensors="np")
+    tokenizer = {processor_class}.from_pretrained("{checkpoint}")
+    model = {model_class}.from_pretrained("{checkpoint}")
 
-    >>> outputs = model(**inputs)
-    >>> logits = outputs.logits
-    >>> list(logits.shape)
-    [1, 512, 9]
-    ```
+    inputs = tokenizer("My name is Philipp and I live in Germany.", return_tensors="np")
+
+    outputs = model(**inputs)
+    logits = outputs.logits
+    list(logits.shape)
+    # [1, 512, 9]
 """
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
 class RKModelForTokenClassification(RKModel[TokenClassifierOutput, torch.Tensor | np.ndarray]):
-    """RKNN Model with a token classification head on top (a linear layer on top of the hidden-states output)
-    e.g. for Named-Entity-Recognition (NER) tasks."""
+    """RKNN Model with a token classification head on top (a linear layer on top of the hidden-states output) e.g. for Named-Entity-Recognition (NER) tasks."""  # noqa: E501
 
     auto_model_class = AutoModelForTokenClassification
 
     @add_start_docstrings_to_model_forward(
         TEXT_INPUTS_DOCSTRING.format("batch_size, sequence_length")
         + TOKEN_CLASSIFICATION_EXAMPLE.format(
-            processor_class=_TOKENIZER_FOR_DOC,
+            processor_class=TOKENIZER_FOR_DOC,
             model_class="RKModelForTokenClassification",
             checkpoint="rk-transformers/bert-base-NER",
         )
@@ -1025,45 +968,44 @@ class RKModelForTokenClassification(RKModel[TokenClassifierOutput, torch.Tensor 
 
 
 MULTIPLE_CHOICE_EXAMPLE = r"""
-    Example of multiple choice:
+Example of multiple choice:
 
-    ```python
-    >>> from transformers import {processor_class}
-    >>> from rktransformers.modeling import {model_class}
-    >>> import torch
+.. code-block:: python
 
-    >>> tokenizer = {processor_class}.from_pretrained("{checkpoint}")
-    >>> model = {model_class}.from_pretrained("{checkpoint}")
+    from transformers import {processor_class}
+    from rktransformers.modeling import {model_class}
+    import torch
 
-    >>> prompt = "In Italy, pizza is served in slices."
-    >>> choice0 = "It is eaten with a fork and knife."
-    >>> choice1 = "It is eaten while held in the hand."
-    >>> choice2 = "It is blended into a smoothie."
-    >>> choice3 = "It is folded into a taco."
-    >>> labels = torch.tensor(0).unsqueeze(0)  # choice0 is correct (according to Wikipedia ;))
+    tokenizer = {processor_class}.from_pretrained("{checkpoint}")
+    model = {model_class}.from_pretrained("{checkpoint}")
 
-    >>> encoding = tokenizer([prompt, prompt, prompt, prompt], [choice0, choice1, choice2, choice3], return_tensors="np", padding=True)
-    >>> inputs = {{k: np.expand_dims(v, 0) for k, v in encoding.items()}}
+    prompt = "In Italy, pizza is served in slices."
+    choice0 = "It is eaten with a fork and knife."
+    choice1 = "It is eaten while held in the hand."
+    choice2 = "It is blended into a smoothie."
+    choice3 = "It is folded into a taco."
+    labels = torch.tensor(0).unsqueeze(0)  # choice0 is correct (according to Wikipedia ;))
 
-    >>> outputs = model(**inputs)
-    >>> logits = outputs.logits
-    >>> list(logits.shape)
-    [1, 4]
-    ```
+    encoding = tokenizer([prompt, prompt, prompt, prompt], [choice0, choice1, choice2, choice3], return_tensors="np", padding=True)
+    inputs = {{k: np.expand_dims(v, 0) for k, v in encoding.items()}}
+
+    outputs = model(**inputs)
+    logits = outputs.logits
+    list(logits.shape)
+    # [1, 4]
 """  # noqa: E501
 
 
 @add_end_docstrings(RKNN_MODEL_END_DOCSTRING)
 class RKModelForMultipleChoice(RKModel[MultipleChoiceModelOutput, torch.Tensor | np.ndarray]):
-    """RKNN Model with a multiple choice classification head
-    on top (a linear layer on top of the pooled output and a softmax) e.g. for RocStories/SWAG tasks."""
+    """RKNN Model with a multiple choice classification head on top (a linear layer on top of the pooled output and a softmax) e.g. for RocStories/SWAG tasks."""  # noqa: E501
 
     auto_model_class = AutoModelForMultipleChoice
 
     @add_start_docstrings_to_model_forward(
         TEXT_INPUTS_DOCSTRING.format("batch_size, num_choices, sequence_length")
         + MULTIPLE_CHOICE_EXAMPLE.format(
-            processor_class=_TOKENIZER_FOR_DOC,
+            processor_class=TOKENIZER_FOR_DOC,
             model_class="RKModelForMultipleChoice",
             checkpoint="rk-transformers/bert-base-uncased_SWAG",
         )

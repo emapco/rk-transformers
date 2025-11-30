@@ -24,3 +24,17 @@ lint:
 	ruff format . tests
 	ruff analyze graph
 	ruff clean
+
+.PHONY: docs
+docs: docs-clean
+	cd docs && $(MAKE) html
+
+.PHONY: docs-clean
+docs-clean:
+	cd docs && $(MAKE) clean
+
+.PHONY: docs-serve
+docs-serve:
+	@echo "Serving documentation at http://localhost:8000"
+	@echo "Press Ctrl+C to stop"
+	python3 -m http.server --directory docs/build/html 8000

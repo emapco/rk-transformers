@@ -43,7 +43,28 @@ class PreTrainedModel(ABC):  # noqa: B024
 
 
 class RKNNRuntime:
-    """Handles RKNN model loading and runtime initialization."""
+    """Runtime wrapper for RKNN models.
+
+    This class encapsulates loading an RKNN model, verifying its
+    target device/platform compatibility, and initializing the runtime with the
+    desired core mask.
+
+    Attributes:
+        model_path (Path): Filesystem path to the RKNN model file.
+        platform (PlatformType | None): Target platform string such as ``'rk3588'``.
+            When None, the platform is detected from the host environment.
+        core_mask (CoreMaskType): Core mask selection for devices with multiple NPU
+            cores. Examples include ``'auto'``, ``'0'``, ``'1'`, and ``'all'``.
+        rknn_config (RKNNConfig | None): Optional configuration object for RKNN
+            runtime behavior.
+        rknn (RKNNLite | None): Loaded RKNN runtime instance or ``None`` when not
+            initialized.
+
+    Example:
+        >>> runtime = RKNNRuntime("/tmp/model.rknn", platform="rk3588", core_mask="auto")
+        >>> runtime.rknn  # The underlying RKNN runtime instance
+
+    """
 
     def __init__(
         self,
@@ -52,6 +73,26 @@ class RKNNRuntime:
         core_mask: CoreMaskType = "auto",
         rknn_config: RKNNConfig | None = None,
     ) -> None:
+        """Create a new :class:`~RKNNRuntime` and loads the model specified by ``model_path``.
+
+        Args:
+            model_path (str | Path): Path to the RKNN model file on disk. This file
+                will be loaded during initialization.
+            platform (PlatformType | None, optional): Optional platform string
+                specifying the target device. When None, the platform will be
+                detected from the host environment via :py:func:`~rktransformers.utils.env_utils.get_edge_host_platform()`.
+            core_mask (CoreMaskType, optional): Core mask used for devices with
+                several NPU cores (e.g., 'auto', '0', '1', 'all'). Defaults to
+                ``'auto'``.
+            rknn_config (RKNNConfig | None, optional): Optional RKNN configuration
+                object. Not all runtime options are currently implemented; this
+                field is kept for future extension.
+
+        Raises:
+            FileNotFoundError: If the given `model_path` does not exist.
+            RuntimeError: If the model fails to load or the runtime fails to
+                initialize.
+        """  # noqa: E501
         self.model_path = Path(model_path)
         self.platform = platform or get_edge_host_platform()
         self.core_mask = core_mask
@@ -59,7 +100,15 @@ class RKNNRuntime:
         self.rknn = self._load_rknn_model()
 
     def _release(self) -> None:
-        """Release RKNNLite resources following RKNN-toolkit2 best practices."""
+        """Release RKNN runtime resources.
+
+        This method attempts to safely release the underlying RKNN runtime
+        instance and suppresses exceptions to avoid propagating errors during
+        interpreter shutdown. It also silences RKNN C-level logging while
+        calling :meth:`rknn.release`.
+
+        It is intentionally a private helper to mirror RKNN toolkit best-practices.
+        """
         if getattr(self, "rknn", None) is not None:
             assert self.rknn is not None
             with contextlib.suppress(Exception), suppress_output():
@@ -70,9 +119,18 @@ class RKNNRuntime:
         self._release()
 
     def list_model_compatible_platform(self) -> dict[str, Any] | None:
-        """
-        List supported platforms for the loaded model.
-        Returns a dictionary of supported platforms or None if the check fails.
+        """Return the platforms supported by the current RKNN model.
+
+        Returns:
+            dict[str, Any] | None: The value returned by RKNN's
+                ``list_support_target_platform`` helper or ``None`` if the runtime
+                is not initialized or the API is not available.
+                Example::
+
+                    {
+                        'support_target_platform': ['rk3588'],
+                        'filled_target_platform': ['rk3588']
+                    }
         """
         if self.rknn is None:
             return None
@@ -82,7 +140,23 @@ class RKNNRuntime:
         return None
 
     def _load_rknn_model(self) -> RKNNLite:
-        """Load the RKNN graph and initialize the runtime."""
+        """Load and initialize the RKNN model and runtime instance.
+
+        This method performs the following steps:
+        1. Verifies the model file exists and raises :class:`FileNotFoundError` if not.
+        2. Creates an ``RKNNLite`` instance and loads the model.
+        3. Optionally queries supported platforms and verifies compatibility.
+        4. Initializes the runtime for the platform, applying ``core_mask`` on
+           devices which expose multiple NPU cores.
+
+        Returns:
+            RKNNLite: Fully initialised RKNN runtime instance.
+
+        Raises:
+            FileNotFoundError: If the provided model file does not exist.
+            RuntimeError: If the model fails to load or the runtime fails to
+                initialize.
+        """
         if not self.model_path.exists():
             raise FileNotFoundError(f"RKNN model not found: {self.model_path}")
 

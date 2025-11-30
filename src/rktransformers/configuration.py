@@ -50,16 +50,30 @@ class QuantizationConfig:
         dataset_columns: List of dataset columns to use for calibration (e.g., ["question", "context"]).
             If not specified, falls back to auto-detection.
         quantized_dtype: Quantization data type.
-            Options: "w8a8" (8-bit weights and activations), "w16a16i", "w16a16i_dfp".
+            Options:
+
+                - "w8a8" (8-bit weights and activations)
+                - "w8a16" (8-bit weights, 16-bit activations)
+                - "w16a16i" (16-bit weights, 16-bit activations, int8)
+                - "w16a16i_dfp" (16-bit weights, 16-bit activations, float)
+                - "w4a16" (4-bit weights, 16-bit activations)
+
             Recommendation: "w8a8" for best performance, "w16a16" for better accuracy.
         quantized_algorithm: Quantization calibration algorithm.
-            Options: "normal", "mmse", "kl_divergence", "gdq".
-            Recommendation: "normal" is fastest, "kl_divergence" may provide better accuracy.
-        quantized_method: Quantization granularity.
             Options:
-                "channel" (per-channel)
-                "layer" (per-layer)
-                "group{SIZE}" (group quantization) where SIZE is multiple of 32 between 32 and 256.
+
+                - "normal" (normal quantization)
+                - "mmse" (minimum mean square error)
+                - "kl_divergence" (Kullback-Leibler divergence)
+                - "gdq" (gradient descent quantization)
+
+            Recommendation: "normal" is fastest, "kl_divergence" may provide better accuracy.
+        quantized_method: Quantization granularity. Options:
+
+                - channel: (per-channel)
+                - layer: (per-layer)
+                - group{SIZE}: (group quantization) where SIZE is multiple of 32 between 32 and 256.
+
             Recommendation: "channel" provides better accuracy.
         quantized_hybrid_level: Hybrid quantization level (0-3).
             Higher values keep more layers in float for better accuracy but larger size.
@@ -119,10 +133,12 @@ class OptimizationConfig:
 
     Args:
         optimization_level: Graph optimization level (0-3).
-            0: No optimization
-            1: Basic optimization
-            2: Moderate optimization
-            3: Aggressive optimization (recommended)
+
+            - 0: No optimization
+            - 1: Basic optimization
+            - 2: Moderate optimization
+            - 3: Aggressive optimization (recommended)
+
             Recommendation: Use 3 for best performance.
         enable_flash_attention: Enable Flash Attention optimization for transformer models.
             Significantly improves attention layer performance.
@@ -162,22 +178,26 @@ class RKNNConfig:
 
     Args:
         target_platform: Target Rockchip platform.
-            Options: "rk3566", "rk3568", "rk3588", "rk3576", "rk3562", "rk1106", "rk1103", "rv1126b".
-            Auto-detected: Not auto-detected, defaults to "rk3588".
-        quantization: Quantization configuration (see QuantizationConfig).
-        optimization: Optimization configuration (see OptimizationConfig).
+            Options:
 
-        # Model Input Configuration
+                - "rk3588"
+                - "rk3576"
+                - "rk3568"
+                - "rk3566"
+                - "rk3562"
+
+            Auto-detected: Not auto-detected, defaults to "rk3588".
+        quantization: Quantization configuration (see :class:`QuantizationConfig`).
+        optimization: Optimization configuration (see :class:`OptimizationConfig`).
         model_input_names: Names of model inputs (e.g., ["input_ids", "attention_mask", "token_type_ids"]).
             Auto-detected: Optimum automatically determines required inputs during ONNX export based on the model's architecture.
+
             - BERT models that use segment embeddings: Will include token_type_ids automatically
             - RoBERTa, sentence transformers: Will exclude token_type_ids automatically
-            Note: This parameter is primarily used for RKNN conversion.
-                  The ONNX export process inspects the exported model to determine actual inputs.
+
+            Note: This parameter is primarily used for RKNN conversion. The ONNX export process inspects the exported model to determine actual inputs.
         type_vocab_size: Token type vocabulary size (informational, from model's config.json).
             Auto-detected: Read from model's config.json.
-
-        # Model Dimensions
         batch_size: Batch size for input shapes during ONNX export and RKNN conversion (e.g., [batch_size, max_seq_length]).
             This controls the shape of inputs, not which inputs are included.
             Example: batch_size=1 creates inputs shaped [1, 128], batch_size=4 creates [4, 128].
@@ -185,11 +205,11 @@ class RKNNConfig:
             Auto-detected: Read from model's config.json (max_position_embeddings).
             Falls back to 512 if not found in config.
             Note: large sequence length causes the RKNN export to segmentation fault.
-
-        # RKNN-specific Parameters
         float_dtype: Floating point data type for non-quantized operations.
-            Options: "float16", "float32".
-            Recommendation: "float16" for better performance.
+            Options:
+
+                - "float16"
+
         mean_values: Mean values for input normalization (for image models).
         std_values: Standard deviation values for input normalization (for image models).
         custom_string: Custom configuration string passed to RKNN toolkit.
@@ -202,13 +222,11 @@ class RKNNConfig:
         op_target: Specify the target device for specific operations.
             Useful for offloading operations to the CPU which are not supported by the NPU.
             Format: {'op_id':'cpu', 'op_id3':'cpu'}. Default is None.
+            Example::
 
-            ```python
-            unsupported_used = [(node.op_type, node.name) for node in model.graph.node if node.op_type in unsupported]
-            op_target = {n:"cpu" for _,n in unsupported_used}
-            ```
+                unsupported_used = [(node.op_type, node.name) for node in model.graph.node if node.op_type in unsupported]
+                op_target = {n:"cpu" for _,n in unsupported_used}
 
-        # Export Settings
         model_name_or_path: Path to input ONNX model file or Hugging Face model ID.
         output_path: Path for output RKNN model file or directory.
             Optional. Defaults to the model's parent directory (for local files) or current directory (for Hub models).
@@ -218,16 +236,21 @@ class RKNNConfig:
             If no namespace is provided (e.g., "model-name"), the username will be auto-detected from the token via whoami() API.
         hub_token: HuggingFace Hub authentication token.
         hub_private_repo: Create a private repository on HuggingFace Hub.
-
-        # Optimum Export Settings
-        opset: ONNX opset version. Minimum: 14 (required for SDPA). Maximum: 19. (maximum supported by RKNN). (default: 18).
+        opset: ONNX opset version. Minimum: 14 (required for SDPA). Maximum: 19. (maximum supported by RKNN). (default: 19).
         task: Task type for export (default: "auto").
+
             - 'auto': Uses optimum to detect the task based on model architecture.
-                - Can be used to export models supported by optimum and not rk-transformers runtime functionality,
-                  in which case, the user is responsible for developing inference code using rknn-toolkit-lite2 library or subclassing `rktransformers.RKModel`.
-            - *ForSequenceClassification -> sequence-classification
-            - *ForMaskedLM -> fill-mask
-            - Fallback: feature-extraction (e.g. BertModel)
+
+              - Can be used to export models supported by optimum and not rk-transformers runtime functionality, in which case, the user is responsible for developing inference code using rknn-toolkit-lite2 library or subclassing `rktransformers.RKModel`.
+
+            - ForSequenceClassification -> sequence-classification
+            - ForMaskedLM -> fill-mask
+            - ForQuestionAnswering -> question-answering
+            - ForTokenClassification -> token-classification
+            - ForMultipleChoice -> multiple-choice
+            - ForFeatureExtraction -> feature-extraction
+            - Fallback: feature-extraction if XYZModel
+
         task_kwargs: Task-specific keyword arguments for ONNX export (dict[str, Any]).
             Example: For multiple-choice tasks, use {"num_choices": 4}.
             These kwargs are passed directly to optimum's main_export function.

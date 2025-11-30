@@ -45,6 +45,7 @@ Changelog = "https://github.com/emapco/rk-transformers/releases"
 export = ["rknn-toolkit2==2.3.2", "datasets", "numpy==1.26.4"]
 inference = ["rknn-toolkit-lite2==2.3.2", "numpy>=1.26.4,<3.0.0"]
 dev = ["pytest", "pytest-cov", "pytest-xdist", "pytest-env", "pytest-rerunfailures", "pre-commit", "build", "ruff", "ninja"]
+docs = ["sphinx", "sphinx-rtd-dark-mode"]
 
 [project.scripts]
 rk-transformers-cli = "rktransformers.commands.rktransformers_cli:main"

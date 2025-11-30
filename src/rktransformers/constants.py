@@ -64,12 +64,6 @@ PlatformType = Literal[
     "rk3568",
     "rk3566",
     "rk3562",
-    "rk2118",
-    "rv1126b",
-    "rv1106b",
-    "rv1106",
-    "rv1103b",
-    "rv1103",
 ]
 PLATFORM_CHOICES = get_args(PlatformType)
 CoreMaskType = Literal[  # for rk3588/rk3576 devices or other device with multiple NPU cores

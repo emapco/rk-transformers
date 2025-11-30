@@ -41,7 +41,7 @@ def get_librknnrt_version() -> str:
     return "Not Detected"
 
 
-def get_rockchip_board():
+def get_rockchip_board() -> str:
     """Read Rockchip board name from device tree.
 
     Returns:
@@ -113,21 +113,11 @@ def get_edge_host_platform() -> str | None:
                 return "rk3566"
             if "rk3562" in compatible:
                 return "rk3562"
-            if "rv1126b" in compatible:
-                return "rv1126b"
-            if "rv1106b" in compatible:
-                return "rv1106b"
-            if "rv1106" in compatible:
-                return "rv1106"
-            if "rv1103b" in compatible:
-                return "rv1103b"
-            if "rv1103" in compatible:
-                return "rv1103"
     except OSError:
         pass
     return None
 
 
 def is_rockchip_platform() -> bool:
-    """Check if the current platform is a Rockchip device."""
+    """Returns True if the current platform is a Rockchip device."""
     return get_edge_host_platform() is not None

@@ -128,7 +128,7 @@ def export_rknn(config: RKNNConfig) -> None:
 
             main_export(**export_kwargs)
 
-            # Restore preserved config if it existed
+            # Restore preserved config if it existed after export
             if preserved_config is not None:
                 logger.info("Restoring preserved config.json with RKNN modifications")
                 with open(config_path, "w") as f:
@@ -192,10 +192,59 @@ def export_rknn(config: RKNNConfig) -> None:
         num_choices = config.task_kwargs.get("num_choices", 4) if config.task_kwargs else 4
         input_size_list: list[list[int]] = [[batch_size, num_choices, sequence_length]] * len(inputs)
     else:
-        input_size_list: list[list[int]] = [[batch_size, sequence_length]] * len(inputs)
+        # Check for decoder model (past_key_values)
+        has_past_key_values = any("past_key_values" in name for name in inputs)
 
-    if config.dynamic_input is not None and (input_size_list not in config.dynamic_input):
-        config.dynamic_input.append(input_size_list)
+        if has_past_key_values:
+            # Decoder model - support both Prefill and Decode phases via dynamic shapes
+            # Decode Phase: input_ids [B, 1], past_key_values [B, N, S-1, H]
+            # Prefill Phase: input_ids [B, S], past_key_values [B, N, 0, H]
+
+            # Determine num_heads and head_dim from config
+            num_heads = getattr(model_config, "num_key_value_heads", getattr(model_config, "num_attention_heads", 12))
+            hidden_size = getattr(model_config, "hidden_size", 768)
+            num_attention_heads = getattr(model_config, "num_attention_heads", 12)
+            head_dim = hidden_size // num_attention_heads
+
+            # Build decode phase input sizes (for generation loop)
+            decode_size_list = []
+            for name in inputs:
+                if "past_key_values" in name:
+                    # Past sequence length = sequence_length - 1 (past + current = sequence_length)
+                    decode_size_list.append([batch_size, num_heads, sequence_length - 1, head_dim])
+                elif "input_ids" in name or "position_ids" in name or "token_type_ids" in name:
+                    decode_size_list.append([batch_size, 1])
+                else:
+                    # attention_mask and others default to [batch_size, sequence_length]
+                    decode_size_list.append([batch_size, sequence_length])
+
+            # Build prefill phase input sizes (for initial prompt processing)
+            prefill_size_list = []
+            for name in inputs:
+                if "past_key_values" in name:
+                    # Empty past for prefill (0 sequence length)
+                    prefill_size_list.append([batch_size, num_heads, 0, head_dim])
+                else:
+                    # All other inputs use full sequence length for prefill
+                    prefill_size_list.append([batch_size, sequence_length])
+
+            # Use decode sizes as the primary input_size_list (largest tensor dimensions)
+            input_size_list = decode_size_list
+
+            # Add both prefill and decode to dynamic_input for runtime flexibility
+            if config.dynamic_input is None:
+                config.dynamic_input = []
+
+            if prefill_size_list not in config.dynamic_input or decode_size_list not in config.dynamic_input:
+                if prefill_size_list not in config.dynamic_input:
+                    config.dynamic_input.append(prefill_size_list)
+                    logger.info(f"Added prefill input sizes to dynamic_input: {prefill_size_list}")
+                if decode_size_list not in config.dynamic_input:
+                    config.dynamic_input.append(decode_size_list)
+                    logger.info(f"Added decode input sizes to dynamic_input: {decode_size_list}")
+        else:
+            # Encoder model or Prefill Phase
+            input_size_list: list[list[int]] = [[batch_size, sequence_length]] * len(inputs)
 
     logger.info(f"Loading ONNX model into RKNN with inputs: {inputs} and sizes: {input_size_list}")
     ret = rknn.load_onnx(

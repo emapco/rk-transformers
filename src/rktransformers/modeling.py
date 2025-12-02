@@ -14,7 +14,6 @@
 
 import os
 import re
-import shutil
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Generic, Literal, overload
@@ -35,14 +34,6 @@ from transformers import (
     AutoTokenizer,
     PretrainedConfig,
 )
-from transformers.modeling_outputs import (
-    BaseModelOutput,
-    MaskedLMOutput,
-    MultipleChoiceModelOutput,
-    QuestionAnsweringModelOutput,
-    SequenceClassifierOutput,
-    TokenClassifierOutput,
-)
 from transformers.utils import logging
 from transformers.utils.doc import add_end_docstrings, add_start_docstrings
 from transformers.utils.hub import cached_file, is_offline_mode
@@ -54,6 +45,14 @@ from .constants import (
     RKNN_WEIGHTS_NAME,
     CoreMaskType,
     PlatformType,
+)
+from .modeling_outputs import (
+    BaseModelOutput,
+    MaskedLMOutput,
+    MultipleChoiceModelOutput,
+    QuestionAnsweringModelOutput,
+    SequenceClassifierOutput,
+    TokenClassifierOutput,
 )
 from .modeling_utils import MODEL_OUTPUT_T, PreTrainedModel, RKNNRuntime, TENSOR_Ts
 from .utils.docs import (
@@ -375,10 +374,6 @@ class RKModel(
                 self.__class__.__name__,
                 ", ".join(kwargs.keys()),
             )
-
-    def _save_pretrained(self, save_directory: Path) -> None:
-        target = save_directory / RKNN_WEIGHTS_NAME
-        shutil.copyfile(self.model_path, target)
 
     @staticmethod
     def _cached_file(
@@ -702,7 +697,6 @@ Example of feature extraction:
 
     from transformers import {processor_class}
     from rktransformers.modeling import {model_class}
-    import torch
 
     tokenizer = {processor_class}.from_pretrained("{checkpoint}")
     model = {model_class}.from_pretrained("{checkpoint}")
@@ -755,7 +749,6 @@ Example of masked language modeling:
 
     from transformers import {processor_class}
     from rktransformers.modeling import {model_class}
-    import torch
 
     tokenizer = {processor_class}.from_pretrained("{checkpoint}")
     model = {model_class}.from_pretrained("{checkpoint}")
@@ -808,7 +801,6 @@ Example of single-label classification:
 
     from transformers import {processor_class}
     from rktransformers.modeling import {model_class}
-    import torch
 
     tokenizer = {processor_class}.from_pretrained("{checkpoint}")
     model = {model_class}.from_pretrained("{checkpoint}")
@@ -861,7 +853,6 @@ Example of question answering:
 
     from transformers import {processor_class}
     from rktransformers.modeling import {model_class}
-    import torch
 
     tokenizer = {processor_class}.from_pretrained("{checkpoint}")
     model = {model_class}.from_pretrained("{checkpoint}")
@@ -921,7 +912,6 @@ Example of token classification:
 
     from transformers import {processor_class}
     from rktransformers.modeling import {model_class}
-    import torch
 
     tokenizer = {processor_class}.from_pretrained("{checkpoint}")
     model = {model_class}.from_pretrained("{checkpoint}")
@@ -974,7 +964,6 @@ Example of multiple choice:
 
     from transformers import {processor_class}
     from rktransformers.modeling import {model_class}
-    import torch
 
     tokenizer = {processor_class}.from_pretrained("{checkpoint}")
     model = {model_class}.from_pretrained("{checkpoint}")

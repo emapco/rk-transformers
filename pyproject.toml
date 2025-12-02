@@ -37,7 +37,7 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/emapco/rk-transformers"
 Homepage = "https://github.com/emapco/rk-transformers"
-Documentation = "https://github.com/emapco/rk-transformers#readme"
+Documentation = "https://emapco.github.io/rk-transformers"
 "Bug Tracker" = "https://github.com/emapco/rk-transformers/issues"
 Changelog = "https://github.com/emapco/rk-transformers/releases"
 

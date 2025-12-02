@@ -228,7 +228,8 @@ def parse_args_rknn(parser: ArgumentParser):
         choices=SUPPORTED_TASK_CHOICES,
         help="ONNX task type for export. Default: auto. "
         "Auto-detection uses `optimum` to determine the task "
-        "(e.g., sequence-classification, fill-mask). Falls back to feature-extraction if undetermined. "
+        "(e.g., sequence-classification, fill-mask, text-generation). "
+        "Falls back to feature-extraction if model architecture is a plain XYZModel (e.g., BERTModel). "
         "'auto' can be used to export models supported by `optimum` and not rk-transformers runtime functionality, "
         "in which case, the user is responsible for developing inference code using "
         "rknn-toolkit-lite2 library or subclassing `rktransformers.RKModel`.",

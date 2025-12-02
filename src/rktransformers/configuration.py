@@ -248,8 +248,9 @@ class RKNNConfig:
             - ForQuestionAnswering -> question-answering
             - ForTokenClassification -> token-classification
             - ForMultipleChoice -> multiple-choice
+            - ForCausalLM -> text-generation
             - ForFeatureExtraction -> feature-extraction
-            - Fallback: feature-extraction if XYZModel
+            - Fallback: feature-extraction if XYZModel (e.g., BERTModel)
 
         task_kwargs: Task-specific keyword arguments for ONNX export (dict[str, Any]).
             Example: For multiple-choice tasks, use {"num_choices": 4}.

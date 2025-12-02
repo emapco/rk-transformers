@@ -103,13 +103,14 @@ OptimizationLevelType = Literal[0, 1, 2, 3]
 OPTIMIZATION_LEVEL_CHOICES = get_args(OptimizationLevelType)
 # Supported tasks by export and modeling
 SupportedTaskType = Literal[
-    "auto",  # detect task from model config.json architectures[0]
+    "auto",  # let optimum detect task
     "feature-extraction",
     "fill-mask",
     "sequence-classification",
     "question-answering",
     "token-classification",
     "multiple-choice",
+    "text-generation",
 ]
 SUPPORTED_TASK_CHOICES = get_args(SupportedTaskType)
 OpsetType = Literal[14, 15, 16, 17, 18, 19]  # ONNX opset 14 to 19 - sdpa added in 14 and rknn supports up to 19
@@ -123,4 +124,5 @@ TASK_TO_RK_MODEL_CLASS = {
     "question-answering": "RKModelForQuestionAnswering",
     "token-classification": "RKModelForTokenClassification",
     "multiple-choice": "RKModelForMultipleChoice",
+    "text-generation": "RKModelForCausalLM",
 }

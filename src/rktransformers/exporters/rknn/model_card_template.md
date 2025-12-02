@@ -62,6 +62,7 @@ model = RKSentenceTransformer(
 #### RK-Transformers API
 
 {{ usage_example }}{% else %}
+
 #### Unsupported RKNN Model
 
 This model type is not currently supported by the RK-Transformers API. You will need to write custom inference code using `rknn-toolkit-lite2`.

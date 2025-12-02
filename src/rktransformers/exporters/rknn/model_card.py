@@ -349,7 +349,7 @@ class ModelCardGenerator:
                     logger.warning(f"Failed to load usage template from {template_file}: {e}")
 
         if not usage_template:
-            logger.warning(f"No usage template found for {rk_model_class}")
+            logger.warning(f"No usage model card template found for {rk_model_class}")
 
         available_model_configs = self._get_available_models(output_dir, config)
         available_model_configs.sort(key=lambda x: x.output_path)  # type: ignore
